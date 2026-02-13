@@ -39,11 +39,37 @@ GitHub Actions (毎時cron)
 
 ### 1. Supabase プロジェクト作成
 
-1. [supabase.com](https://supabase.com) でプロジェクトを作成
-2. Dashboard > **SQL Editor** で [supabase_schema.sql](supabase_schema.sql) の内容を実行
-3. **Settings > API** から以下を控える:
-   - `Project URL` → `SUPABASE_URL`
-   - `anon public` キー → `SUPABASE_KEY`
+#### 1-1. プロジェクトを作成する
+
+1. [supabase.com](https://supabase.com) にアクセスし、アカウントを作成・ログイン
+2. **New Project** をクリック
+3. 以下を入力して **Create new project**:
+   - **Project name**: `OwnNews`（任意）
+   - **Database Password**: 安全なパスワードを設定（控えておく）
+   - **Region**: `Northeast Asia (Tokyo)` を推奨（日本からのアクセスが速い）
+
+#### 1-2. データベースのスキーマを作成する
+
+1. ダッシュボード左メニューの **SQL Editor** をクリック
+2. [supabase_schema.sql](supabase_schema.sql) の内容をすべてコピーして貼り付け
+3. **Run** ボタンをクリック
+4. `Success. No rows returned` と表示されれば完了
+
+#### 1-3. SUPABASE_URL と SUPABASE_KEY を取得する
+
+1. ダッシュボード左メニューの **Project Settings**（歯車アイコン）をクリック
+2. 左メニューの **API** をクリック
+3. 以下の2つの値を控える:
+
+| 項目 | 画面上の表示 | 値の形式 |
+|------|-------------|---------|
+| `SUPABASE_URL` | **Project URL** | `https://xxxxx.supabase.co` |
+| `SUPABASE_KEY` | **Project API keys** > `anon` `public` | `eyJhbGci...` で始まる長い文字列 |
+
+> **注意**: ダッシュボードのURL（`https://supabase.com/dashboard/project/xxxxx`）と **Project URL**（`https://xxxxx.supabase.co`）は別物です。アプリで使うのは後者です。
+>
+> 例えばダッシュボードURLが `https://supabase.com/dashboard/project/tcajofghsbskpstxpjwi` の場合、
+> Project URL は `https://tcajofghsbskpstxpjwi.supabase.co` になります。
 
 ### 2. Cloudflare Workers AI
 
@@ -110,12 +136,42 @@ curl https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/@cf/ba
 
 ### 4. GitHub リポジトリ設定
 
-1. リポジトリの **Settings > Secrets and variables > Actions** に以下を登録:
-   - `SUPABASE_URL`
-   - `SUPABASE_KEY`
-   - `CF_ACCOUNT_ID`
-   - `CF_API_TOKEN`
-2. Actions タブから **Collect News** ワークフローを手動実行して動作確認
+APIキーなどの機密情報を GitHub Actions から安全に参照するため、**Repository secrets** に登録します。
+
+> **secrets と variables の違い**: secrets は暗号化されログにもマスクされる（APIキー向け）。variables は平文で保存される（設定値向け）。今回はすべて機密情報なので **secrets** を使います。
+>
+> **Repository と Environment の違い**: Environment secrets は特定の環境（production / staging 等）に紐づきます。今回はワークフローが1つだけなので、シンプルな **Repository secrets** で十分です。
+
+#### 4-1. Repository secrets を登録する
+
+1. リポジトリページ（https://github.com/wildriver/OwnNews）を開く
+2. 上部タブの **Settings** をクリック
+3. 左メニューの **Secrets and variables** > **Actions** をクリック
+4. **Secrets** タブが選択されていることを確認（デフォルトで選択済み）
+5. **New repository secret** ボタンをクリック
+6. 以下の4つを1つずつ登録する:
+
+| Name | Value の内容 |
+|------|-------------|
+| `SUPABASE_URL` | Supabase の Project URL（例: `https://xxxxx.supabase.co`） |
+| `SUPABASE_KEY` | Supabase の `anon public` キー（`eyJ...` で始まる文字列） |
+| `CF_ACCOUNT_ID` | Cloudflare の Account ID |
+| `CF_API_TOKEN` | Cloudflare の API Token |
+
+各項目について:
+- **Name** 欄: 上記の名前を正確に入力（大文字・アンダースコア）
+- **Secret** 欄: 対応する値を貼り付け
+- **Add secret** ボタンをクリック
+
+登録後、一覧に4つの secrets が表示されていれば完了です（値は `***` でマスクされます）。
+
+#### 4-2. ワークフローを手動実行して動作確認
+
+1. リポジトリ上部の **Actions** タブをクリック
+2. 左メニューから **Collect News** を選択
+3. **Run workflow** ボタン > ブランチが `main` であることを確認 > **Run workflow**
+4. 実行が始まるので、クリックしてログを確認
+5. `Collected X new articles.` と表示されれば成功
 
 ### 5. Streamlit Community Cloud にデプロイ
 

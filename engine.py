@@ -4,8 +4,19 @@ Supabase (pgvector) を使ったベクトル類似度検索とユーザーベク
 Embeddingは収集時にDB保存済みのため、閲覧時にEmbedding APIは呼ばない。
 """
 
+import json
+
 import numpy as np
 from supabase import Client
+
+
+def _parse_vector(v) -> list[float]:
+    """Supabase pgvectorの値をfloatリストに変換する。
+    文字列 "[0.01, -0.02, ...]" またはリストのどちらにも対応。
+    """
+    if isinstance(v, str):
+        return json.loads(v)
+    return v
 
 
 class RankingEngine:
@@ -26,7 +37,7 @@ class RankingEngine:
             .execute()
         )
         if resp.data:
-            return resp.data[0]["vector"]
+            return _parse_vector(resp.data[0]["vector"])
         return None
 
     def _save_user_vector(self, vector: list[float]) -> None:
@@ -47,8 +58,11 @@ class RankingEngine:
         )
         if not resp.data:
             return []
-        embeddings = [r["embedding"] for r in resp.data]
-        avg = np.mean(embeddings, axis=0).tolist()
+        embeddings = np.array(
+            [_parse_vector(r["embedding"]) for r in resp.data],
+            dtype=np.float32,
+        )
+        avg = embeddings.mean(axis=0).tolist()
         self._save_user_vector(avg)
         return avg
 
@@ -128,7 +142,9 @@ class RankingEngine:
         if not resp.data or resp.data[0]["embedding"] is None:
             return
 
-        v_clicked = np.array(resp.data[0]["embedding"], dtype=np.float32)
+        v_clicked = np.array(
+            _parse_vector(resp.data[0]["embedding"]), dtype=np.float32
+        )
 
         user_vec = self.get_user_vector()
         if user_vec is None:
