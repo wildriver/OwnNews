@@ -113,29 +113,38 @@ def main() -> None:
 
     # --- 記事一覧 ---
     for i, article in enumerate(articles):
-        col_btn, col_content = st.columns([0.08, 0.92])
+        similarity = article.get("similarity", 0)
+        score_pct = max(0, min(100, similarity * 100))
+        st.markdown(
+            f"**[{article['title']}]({article['link']})** "
+            f"&nbsp; `{score_pct:.0f}%`"
+        )
+        meta_parts = []
+        if article.get("published"):
+            meta_parts.append(article["published"])
+        if article.get("category"):
+            meta_parts.append(article["category"])
+        if meta_parts:
+            st.caption(" ／ ".join(meta_parts))
 
-        with col_content:
-            similarity = article.get("similarity", 0)
-            score_pct = max(0, min(100, similarity * 100))
-            st.markdown(
-                f"**[{article['title']}]({article['link']})** "
-                f"&nbsp; `{score_pct:.0f}%`"
-            )
-            meta_parts = []
-            if article.get("published"):
-                meta_parts.append(article["published"])
-            if article.get("category"):
-                meta_parts.append(article["category"])
-            if meta_parts:
-                st.caption(" ／ ".join(meta_parts))
+        if article.get("summary"):
+            with st.expander("概要を表示"):
+                st.write(article["summary"])
 
-            if article.get("summary"):
-                with st.expander("概要を表示"):
-                    st.write(article["summary"])
+        # アクションボタン
+        col_read, col_dive, col_dislike, col_space = st.columns(
+            [1, 1, 1, 4]
+        )
 
-            # 深掘りボタン
+        with col_read:
+            if st.button("👁 閲覧", key=f"read_{i}"):
+                engine.record_view(article["id"])
+                st.toast(f"「{article['title'][:20]}…」を記録しました")
+                st.rerun()
+
+        with col_dive:
             if st.button("🔍 深掘り", key=f"dive_{i}"):
+                engine.record_deep_dive(article["id"])
                 with st.spinner("Groq で分析中..."):
                     try:
                         analysis = deep_dive(
@@ -146,10 +155,10 @@ def main() -> None:
                     except Exception as e:
                         st.error(f"深掘り失敗: {e}")
 
-        with col_btn:
-            if st.button("👍", key=f"like_{i}"):
-                engine.update_user_vector(article["id"])
-                st.toast(f"「{article['title'][:20]}…」を学習しました")
+        with col_dislike:
+            if st.button("👎 興味なし", key=f"dislike_{i}"):
+                engine.record_not_interested(article["id"])
+                st.toast(f"「{article['title'][:20]}…」を除外しました")
                 st.rerun()
 
         st.divider()

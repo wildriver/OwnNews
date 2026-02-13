@@ -125,14 +125,8 @@ class RankingEngine:
 
     # --- フィードバック ---
 
-    def update_user_vector(
-        self, article_id: str, alpha: float = 0.1
-    ) -> None:
-        """
-        クリックされた記事のベクトルでユーザーベクトルを更新する。
-        u_new = (1 - α) * u_old + α * v_clicked
-        """
-        # クリック記事のembeddingを取得
+    def _get_article_embedding(self, article_id: str) -> np.ndarray | None:
+        """記事のembeddingベクトルを取得する。"""
         resp = (
             self.sb.table("articles")
             .select("embedding")
@@ -140,17 +134,52 @@ class RankingEngine:
             .execute()
         )
         if not resp.data or resp.data[0]["embedding"] is None:
-            return
-
-        v_clicked = np.array(
+            return None
+        return np.array(
             _parse_vector(resp.data[0]["embedding"]), dtype=np.float32
         )
 
+    def record_view(self, article_id: str) -> None:
+        """記事を閲覧した: 弱い正のフィードバック (α=0.03)"""
+        self._apply_feedback(article_id, alpha=0.03)
+
+    def record_deep_dive(self, article_id: str) -> None:
+        """深掘りボタンを押した: 強い正のフィードバック (α=0.15)"""
+        self._apply_feedback(article_id, alpha=0.15)
+
+    def record_not_interested(self, article_id: str) -> None:
+        """興味なしボタンを押した: 強い負のフィードバック (α=-0.2)"""
+        self._apply_feedback(article_id, alpha=-0.2)
+
+    def _apply_feedback(self, article_id: str, alpha: float) -> None:
+        """
+        ユーザーベクトルを更新する。
+
+        alpha > 0: 正のフィードバック → u_new = (1-α)*u + α*v  (vに近づく)
+        alpha < 0: 負のフィードバック → u_new = (1+α)*u - α*v  (vから遠ざかる)
+          ※ α=-0.2 の場合: u_new = 0.8*u + 0.2*(u - v) の方向 → vから離れる
+        """
+        v = self._get_article_embedding(article_id)
+        if v is None:
+            return
+
         user_vec = self.get_user_vector()
         if user_vec is None:
-            new_vec = v_clicked
+            if alpha > 0:
+                self._save_user_vector(v.tolist())
+            return
+
+        u = np.array(user_vec, dtype=np.float32)
+
+        if alpha >= 0:
+            new_vec = (1 - alpha) * u + alpha * v
         else:
-            u_old = np.array(user_vec, dtype=np.float32)
-            new_vec = (1 - alpha) * u_old + alpha * v_clicked
+            # 負のフィードバック: vから遠ざかる方向に更新
+            strength = abs(alpha)
+            new_vec = (1 + strength) * u - strength * v
+            # ノルムを保持（ベクトルの大きさが発散しないよう正規化）
+            norm = np.linalg.norm(new_vec)
+            if norm > 0:
+                new_vec = new_vec * (np.linalg.norm(u) / norm)
 
         self._save_user_vector(new_vec.tolist())
