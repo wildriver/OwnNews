@@ -114,7 +114,7 @@ class RankingEngine:
         """ベクトル未設定時のフォールバック: 最新記事を返す。"""
         resp = (
             self.sb.table("articles")
-            .select("id, title, link, summary, published, category")
+            .select("id, title, link, summary, published, category, image_url")
             .order("collected_at", desc=True)
             .limit(limit)
             .execute()

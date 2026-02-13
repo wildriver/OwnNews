@@ -7,6 +7,7 @@ GitHub Actionsから定期実行される想定。
 
 import hashlib
 import os
+import re
 
 import feedparser
 import requests
@@ -63,6 +64,31 @@ def fetch_feed(url: str) -> list[dict]:
     return articles
 
 
+def fetch_ogp_image(url: str) -> str:
+    """記事URLからOGP画像URLを取得する。取得失敗時は空文字を返す。"""
+    try:
+        resp = requests.get(url, timeout=5, headers={
+            "User-Agent": "OwnNews/1.0 (ogp-fetcher)"
+        })
+        resp.raise_for_status()
+        html = resp.text[:10000]  # 先頭10KBのみ解析
+        # og:image を探す
+        m = re.search(
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+            html, re.IGNORECASE,
+        )
+        if not m:
+            m = re.search(
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+                html, re.IGNORECASE,
+            )
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return ""
+
+
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """Cloudflare Workers AI でテキストをベクトル化する。"""
     url = (
@@ -107,8 +133,13 @@ def collect() -> int:
         texts = [f"{a['title']} {a['summary']}" for a in batch]
         embeddings = embed_texts(texts)
 
+        # OGP画像を並列的に取得
+        image_urls = []
+        for a in batch:
+            image_urls.append(fetch_ogp_image(a["link"]))
+
         rows = []
-        for a, emb in zip(batch, embeddings):
+        for a, emb, img in zip(batch, embeddings, image_urls):
             rows.append({
                 "id": a["id"],
                 "title": a["title"],
@@ -116,6 +147,7 @@ def collect() -> int:
                 "summary": a["summary"],
                 "published": a["published"],
                 "category": a["category"],
+                "image_url": img,
                 "embedding": emb,
             })
 

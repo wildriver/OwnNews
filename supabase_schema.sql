@@ -12,9 +12,13 @@ create table if not exists articles (
     summary      text,
     published    text,
     category     text,
+    image_url    text,
     embedding    vector(768),
     collected_at timestamptz default now()
 );
+
+-- image_urlカラムが既存テーブルにない場合の追加用（既にテーブルがある場合）
+-- alter table articles add column if not exists image_url text;
 
 -- 3. ユーザーベクトルテーブル
 create table if not exists user_vectors (
@@ -40,12 +44,14 @@ returns table (
     summary    text,
     published  text,
     category   text,
+    image_url  text,
     similarity float
 )
 language sql stable
 as $$
     select
         a.id, a.title, a.link, a.summary, a.published, a.category,
+        a.image_url,
         1 - (a.embedding <=> query_vector) as similarity
     from articles a
     where a.embedding is not null
@@ -61,11 +67,12 @@ returns table (
     link      text,
     summary   text,
     published text,
-    category  text
+    category  text,
+    image_url text
 )
 language sql stable
 as $$
-    select a.id, a.title, a.link, a.summary, a.published, a.category
+    select a.id, a.title, a.link, a.summary, a.published, a.category, a.image_url
     from articles a
     where a.embedding is not null
     order by random()
