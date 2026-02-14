@@ -498,3 +498,69 @@ class RankingEngine:
                 new_vec = new_vec * (np.linalg.norm(u) / norm)
 
         self._save_user_vector(new_vec.tolist())
+
+    # --- 類似記事グルーピング ---
+
+    def group_similar_articles(
+        self, articles: list[dict], threshold: float = 0.85
+    ) -> list[dict]:
+        """embedding のコサイン類似度で類似記事をグループ化する。
+
+        各グループは代表記事の dict に "related" キー（関連記事リスト）を追加した形式。
+        """
+        if not articles:
+            return []
+
+        ids = [a["id"] for a in articles]
+        resp = (
+            self.sb.table("articles")
+            .select("id, embedding")
+            .in_("id", ids)
+            .not_.is_("embedding", "null")
+            .execute()
+        )
+        embeddings: dict[str, np.ndarray] = {}
+        for r in resp.data or []:
+            embeddings[r["id"]] = np.array(
+                _parse_vector(r["embedding"]), dtype=np.float32
+            )
+
+        grouped: list[dict] = []
+        used: set[str] = set()
+
+        for article in articles:
+            aid = article["id"]
+            if aid in used:
+                continue
+
+            emb_i = embeddings.get(aid)
+            if emb_i is None:
+                grouped.append({**article, "related": []})
+                used.add(aid)
+                continue
+
+            group = {**article, "related": []}
+            used.add(aid)
+            norm_i = np.linalg.norm(emb_i)
+            if norm_i == 0:
+                grouped.append(group)
+                continue
+
+            for other in articles:
+                oid = other["id"]
+                if oid in used:
+                    continue
+                emb_j = embeddings.get(oid)
+                if emb_j is None:
+                    continue
+                norm_j = np.linalg.norm(emb_j)
+                if norm_j == 0:
+                    continue
+                sim = float(np.dot(emb_i, emb_j) / (norm_i * norm_j))
+                if sim >= threshold:
+                    group["related"].append(other)
+                    used.add(oid)
+
+            grouped.append(group)
+
+        return grouped

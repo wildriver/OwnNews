@@ -33,7 +33,7 @@ div[data-testid="stImage"] img {
 """, unsafe_allow_html=True)
 
 PLACEHOLDER_IMG = "https://placehold.co/400x200/e8e8e8/999?text=No+Image"
-COLS_PER_ROW = 3
+PAGE_SIZE = 12  # 1回あたりの表示件数
 
 
 # --- Supabase ---
@@ -261,30 +261,39 @@ def render_info_health_panel(engine: RankingEngine) -> None:
 
 # --- カード描画 ---
 
-def _do_interaction(engine: RankingEngine, aid: str, action: str, title: str) -> None:
-    """インタラクションを記録してフィードを更新する。"""
+def _do_interaction(engine: RankingEngine, aids: list[str], action: str) -> None:
+    """インタラクションを記録する。グループ内の全記事IDに適用。"""
     try:
-        if action == "view":
-            engine.record_view(aid)
-        elif action == "deep_dive":
-            engine.record_deep_dive(aid)
-        elif action == "not_interested":
-            engine.record_not_interested(aid)
+        for aid in aids:
+            if action == "view":
+                engine.record_view(aid)
+            elif action == "deep_dive":
+                engine.record_deep_dive(aid)
+            elif action == "not_interested":
+                engine.record_not_interested(aid)
         _invalidate_feed()
     except Exception as e:
         st.error(f"記録に失敗しました: {e}")
 
 
-def render_card(article: dict, engine: RankingEngine) -> None:
-    aid = article["id"]
-    img = article.get("image_url") or PLACEHOLDER_IMG
-    similarity = article.get("similarity", 0)
+def render_card(group: dict, engine: RankingEngine) -> None:
+    """記事カード（類似記事グループ対応）を描画する。"""
+    aid = group["id"]
+    related = group.get("related", [])
+    all_ids = [aid] + [r["id"] for r in related]
+
+    img = group.get("image_url") or PLACEHOLDER_IMG
+    similarity = group.get("similarity", 0)
     score_pct = max(0, min(100, similarity * 100))
-    title = article.get("title", "")
-    link = article.get("link", "")
-    summary = article.get("summary", "")
-    category = article.get("category", "")
-    published = article.get("published", "")
+    title = group.get("title", "")
+    link = group.get("link", "")
+    summary = group.get("summary", "")
+    category = group.get("category", "")
+    published = group.get("published", "")
+
+    # 展開状態の管理
+    open_key = f"open_{aid}"
+    is_open = st.session_state.get(open_key, False)
 
     with st.container(border=True):
         st.image(img, use_container_width=True)
@@ -295,42 +304,60 @@ def render_card(article: dict, engine: RankingEngine) -> None:
         if category:
             meta.append(category)
         meta.append(f"マッチ {score_pct:.0f}%")
+        if related:
+            meta.append(f"関連 {len(related)}件")
         st.caption(" ／ ".join(meta))
 
-        # 記事を内部展開（クリックで開閉）
-        with st.expander(title, expanded=False):
+        # タイトルクリックで展開 + 閲覧記録
+        if st.button(
+            f"{'▼' if is_open else '▶'} {title}",
+            key=f"toggle_{aid}",
+            use_container_width=True,
+        ):
+            if not is_open:
+                # 初回展開時に閲覧記録
+                _do_interaction(engine, all_ids, "view")
+            st.session_state[open_key] = not is_open
+            st.rerun()
+
+        if is_open:
             if summary:
                 st.markdown(summary)
-            st.markdown(f"[🔗 元記事を開く]({link})")
+
+            # 元記事リンク（グループ内すべて）
+            st.markdown(f"🔗 [{title}]({link})")
+            for rel in related:
+                rel_title = rel.get("title", "")
+                rel_link = rel.get("link", "")
+                st.markdown(f"🔗 [{rel_title}]({rel_link})")
 
             # 深掘り結果
             dive_key = f"dive_{aid}"
             if dive_key in st.session_state:
                 st.info(st.session_state[dive_key])
 
-        c1, c2, c3 = st.columns(3)
+        c1, c2 = st.columns(2)
         with c1:
-            if st.button("👁 閲覧", key=f"r_{aid}"):
-                _do_interaction(engine, aid, "view", title)
-                st.rerun()
-        with c2:
             if st.button("🔍 深掘り", key=f"d_{aid}"):
-                _do_interaction(engine, aid, "deep_dive", title)
+                _do_interaction(engine, all_ids, "deep_dive")
                 try:
                     analysis = deep_dive(title, summary)
                 except Exception as e:
                     analysis = f"分析失敗: {e}"
                 st.session_state[f"dive_{aid}"] = analysis
+                st.session_state[open_key] = True
                 st.rerun()
-        with c3:
+        with c2:
             if st.button("👎 除外", key=f"x_{aid}"):
-                _do_interaction(engine, aid, "not_interested", title)
+                _do_interaction(engine, all_ids, "not_interested")
                 st.rerun()
 
 
 def _invalidate_feed() -> None:
     """フィード記事のキャッシュをクリアして再取得させる。"""
-    st.session_state.pop("feed_articles", None)
+    st.session_state.pop("feed_groups", None)
+    st.session_state.pop("feed_cache_key", None)
+    st.session_state.pop("feed_show_count", None)
 
 
 # --- Tab 1: ニュースフィード ---
@@ -355,56 +382,71 @@ def render_news_tab(engine: RankingEngine) -> None:
             step=0.05,
             help="1.0=パーソナライズ強 / 0.0=多様性重視",
         )
-        top_n = st.slider("表示件数", 6, 60, 30, step=3)
+        cols_per_row = st.slider(
+            "カードサイズ",
+            min_value=1,
+            max_value=5,
+            value=3,
+            step=1,
+            help="1=大 / 5=小（1行あたりの列数）",
+        )
 
         st.divider()
         render_info_health_panel(engine)
 
     # 記事取得（セッションにキャッシュして rerun 間で安定させる）
-    cache_key = f"feed_{filter_strength:.2f}_{top_n}"
-    if "feed_articles" not in st.session_state or st.session_state.get("feed_cache_key") != cache_key:
+    cache_key = f"feed_{filter_strength:.2f}"
+    if "feed_groups" not in st.session_state or st.session_state.get("feed_cache_key") != cache_key:
         try:
-            raw = engine.rank(
-                filter_strength=filter_strength, top_n=top_n + 30
-            )
+            raw = engine.rank(filter_strength=filter_strength, top_n=100)
         except Exception as e:
             st.error(f"記事の取得に失敗しました: {e}")
             return
-        st.session_state["feed_articles"] = raw
+
+        # 既読・除外済み記事をフィルタ
+        interacted_ids = engine.get_interacted_ids(
+            ["view", "deep_dive", "not_interested"]
+        )
+        filtered = [a for a in raw if a["id"] not in interacted_ids]
+
+        # 類似記事をグループ化
+        groups = engine.group_similar_articles(filtered, threshold=0.85)
+
+        st.session_state["feed_groups"] = groups
         st.session_state["feed_cache_key"] = cache_key
+        st.session_state["feed_show_count"] = PAGE_SIZE
 
-    all_articles = st.session_state["feed_articles"]
+    groups = st.session_state["feed_groups"]
 
-    if not all_articles:
-        st.info("記事がまだありません。GitHub Actions による収集をお待ちください。")
-        return
-
-    # 既読・除外済み記事をフィルタ
-    interacted_ids = engine.get_interacted_ids(
-        ["view", "deep_dive", "not_interested"]
-    )
-    articles = [a for a in all_articles if a["id"] not in interacted_ids]
-    articles = articles[:top_n]
-
-    if not articles:
+    if not groups:
         st.info("未読の記事がありません。次回の収集をお待ちください。")
         return
 
-    st.caption(f"{len(articles)} 件（未読） ／ フィルタ: {filter_strength:.2f}")
+    show_count = st.session_state.get("feed_show_count", PAGE_SIZE)
+    visible = groups[:show_count]
+
+    st.caption(f"{len(groups)} グループ（未読） ／ フィルタ: {filter_strength:.2f}")
 
     if st.button("🔄 記事を更新"):
         _invalidate_feed()
         st.rerun()
 
     # カードグリッド
-    for row_start in range(0, len(articles), COLS_PER_ROW):
-        cols = st.columns(COLS_PER_ROW)
+    for row_start in range(0, len(visible), cols_per_row):
+        cols = st.columns(cols_per_row)
         for col_idx, col in enumerate(cols):
             idx = row_start + col_idx
-            if idx >= len(articles):
+            if idx >= len(visible):
                 break
             with col:
-                render_card(articles[idx], engine)
+                render_card(visible[idx], engine)
+
+    # もっと見る
+    if show_count < len(groups):
+        remaining = len(groups) - show_count
+        if st.button(f"⬇ もっと見る（残り {remaining} グループ）", use_container_width=True):
+            st.session_state["feed_show_count"] = show_count + PAGE_SIZE
+            st.rerun()
 
 
 # --- Tab 2: ダッシュボード ---
