@@ -64,7 +64,8 @@ create index if not exists user_interactions_user_id_idx
 create index if not exists user_interactions_created_at_idx
     on user_interactions(created_at desc);
 
--- 9. 類似度検索RPC関数
+-- 9. 類似度検索RPC関数（既存の関数を削除してから再作成）
+drop function if exists match_articles(vector, int);
 create or replace function match_articles(
     query_vector vector(768),
     match_count  int
@@ -92,6 +93,7 @@ as $$
 $$;
 
 -- 10. ランダム記事取得RPC関数
+drop function if exists random_articles(int);
 create or replace function random_articles(pick_count int)
 returns table (
     id        text,
