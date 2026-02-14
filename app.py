@@ -658,27 +658,32 @@ def render_news_tab(engine: RankingEngine) -> None:
             st.session_state["feed_show_count"] = show_count + PAGE_SIZE
             st.rerun()
 
-        # Intersection Observer で自動読み込み
-        st.markdown("""
-        <div id="scroll-sentinel" style="height:1px;"></div>
+        # Intersection Observer で自動読み込み（components.htmlで注入）
+        components.html("""
         <script>
-        const sentinel = document.getElementById('scroll-sentinel');
-        if (sentinel) {
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
+        (function() {
+            var doc = window.parent.document;
+            var buttons = doc.querySelectorAll('button');
+            var targetBtn = null;
+            for (var i = 0; i < buttons.length; i++) {
+                if (buttons[i].textContent.indexOf('もっと読み込む') !== -1) {
+                    targetBtn = buttons[i];
+                    break;
+                }
+            }
+            if (!targetBtn) return;
+            var observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
                     if (entry.isIntersecting) {
-                        const btn = document.querySelector('button[kind="secondary"]');
-                        if (btn && btn.textContent.includes('もっと読み込む')) {
-                            btn.click();
-                            observer.disconnect();
-                        }
+                        targetBtn.click();
+                        observer.disconnect();
                     }
                 });
             }, { threshold: 0.1 });
-            observer.observe(sentinel);
-        }
+            observer.observe(targetBtn);
+        })();
         </script>
-        """, unsafe_allow_html=True)
+        """, height=0)
 
 
 # --- Tab 2: ダッシュボード ---
