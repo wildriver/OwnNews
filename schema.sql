@@ -42,7 +42,18 @@ create table if not exists user_interactions (
     primary key (user_id, article_id, interaction_type)
 );
 
--- 6. 公開フィルタ（Phase 2 用）
+-- 6. 情報的健康スコア履歴
+create table if not exists health_score_history (
+    user_id      text not null references user_profile(user_id) on delete cascade,
+    score_date   date not null,
+    diversity    float,
+    bias_ratio   float,
+    top_category text,
+    detail       jsonb,
+    primary key (user_id, score_date)
+);
+
+-- 8. 公開フィルタ（Phase 2 用）
 create table if not exists public_filters (
     filter_id      uuid primary key default gen_random_uuid(),
     name           text not null,
@@ -53,18 +64,18 @@ create table if not exists public_filters (
     created_at     timestamptz default now()
 );
 
--- 7. ベクトル類似度検索用インデックス
+-- 9. ベクトル類似度検索用インデックス
 create index if not exists articles_embedding_idx
     on articles using ivfflat (embedding vector_cosine_ops)
     with (lists = 100);
 
--- 8. パフォーマンス用インデックス
+-- 10. パフォーマンス用インデックス
 create index if not exists user_interactions_user_id_idx
     on user_interactions(user_id);
 create index if not exists user_interactions_created_at_idx
     on user_interactions(created_at desc);
 
--- 9. 類似度検索RPC関数（既存の関数を削除してから再作成）
+-- 11. 類似度検索RPC関数（既存の関数を削除してから再作成）
 drop function if exists match_articles(vector, int);
 create or replace function match_articles(
     query_vector vector(768),
@@ -92,7 +103,7 @@ as $$
     limit match_count;
 $$;
 
--- 10. ランダム記事取得RPC関数
+-- 12. ランダム記事取得RPC関数
 drop function if exists random_articles(int);
 create or replace function random_articles(pick_count int)
 returns table (
@@ -113,7 +124,7 @@ as $$
     limit pick_count;
 $$;
 
--- 11. RLSポリシー
+-- 13. RLSポリシー
 alter table articles enable row level security;
 create policy "articles_select_all" on articles
     for select using (true);
@@ -129,6 +140,10 @@ create policy "user_vectors_all" on user_vectors
 
 alter table user_interactions enable row level security;
 create policy "user_interactions_all" on user_interactions
+    for all using (true);
+
+alter table health_score_history enable row level security;
+create policy "health_score_history_all" on health_score_history
     for all using (true);
 
 alter table public_filters enable row level security;

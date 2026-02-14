@@ -29,6 +29,16 @@ div[data-testid="stImage"] img {
     border-radius: 6px;
     object-fit: cover;
 }
+@media (max-width: 768px) {
+    div.stButton > button {
+        min-height: 44px;
+        font-size: 0.9rem;
+        padding: 0.4rem 0.8rem;
+    }
+    div[data-testid="stImage"] img {
+        max-height: 150px;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -235,7 +245,7 @@ def render_info_health_panel(engine: RankingEngine) -> None:
     else:
         score_color = "🔴"
 
-    st.metric("多様性スコア", f"{score_color} {score}/100")
+    st.metric("多様性スコア（大分類）", f"{score_color} {score}/100")
     st.caption(f"偏食度: {bias}")
 
     dist = health["category_distribution"]
@@ -257,6 +267,30 @@ def render_info_health_panel(engine: RankingEngine) -> None:
     if missing:
         suggestions = "、".join(missing[:3])
         st.info(f"💡 **{suggestions}** の記事も\n読んでみましょう")
+
+    # 階層的分析（中分類・小分類）
+    with st.expander("📊 詳細分析（中分類・小分類）"):
+        try:
+            hier = engine.get_hierarchical_health()
+        except Exception:
+            st.caption("詳細分析を取得できませんでした")
+            return
+
+        med = hier["medium"]
+        if med["distribution"]:
+            med_score = med["diversity_score"]
+            st.caption(f"**中分類** 多様性: {med_score}/100")
+            top_med = list(med["distribution"].items())[:5]
+            for name, cnt in top_med:
+                st.caption(f"  {name}: {cnt}件")
+
+        minor = hier["minor"]
+        if minor["distribution"]:
+            minor_score = minor["diversity_score"]
+            st.caption(f"**小分類（キーワード）** 多様性: {minor_score}/100")
+            top_minor = list(minor["distribution"].items())[:5]
+            for name, cnt in top_minor:
+                st.caption(f"  {name}: {cnt}件")
 
 
 # --- カード描画 ---
@@ -311,6 +345,10 @@ def render_card(group: dict, engine: RankingEngine) -> None:
         if related:
             meta.append(f"関連 {len(related)}件")
         st.caption(" ／ ".join(meta))
+
+        reason = group.get("reason", "")
+        if reason:
+            st.caption(f"💡 {reason}")
 
         # タイトルクリックで展開 + 閲覧記録（フィード維持）
         if st.button(
@@ -397,6 +435,14 @@ def render_news_tab(engine: RankingEngine) -> None:
 
         st.divider()
         render_info_health_panel(engine)
+
+    # 健康スコアを日次記録（1セッション1回）
+    if "health_snapshot_done" not in st.session_state:
+        try:
+            engine.record_health_snapshot()
+            st.session_state["health_snapshot_done"] = True
+        except Exception:
+            pass
 
     # 記事取得（セッションにキャッシュして rerun 間で安定させる）
     cache_key = f"feed_{filter_strength:.2f}"
@@ -494,6 +540,24 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
             st.line_chart(df_daily, x="日付", y="件数")
         else:
             st.caption("まだ収集データがありません")
+
+    st.divider()
+
+    # 情報的健康スコア推移
+    st.subheader("📈 情報的健康スコア推移")
+    try:
+        history = engine.get_health_history(days=30)
+        if history:
+            df_health = pd.DataFrame(history)
+            df_health = df_health.rename(columns={
+                "score_date": "日付",
+                "diversity": "多様性スコア",
+            })
+            st.line_chart(df_health, x="日付", y="多様性スコア")
+        else:
+            st.caption("まだ履歴データがありません（日々の利用で蓄積されます）")
+    except Exception:
+        st.caption("スコア履歴の取得に失敗しました")
 
     st.divider()
 

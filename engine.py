@@ -7,7 +7,9 @@ Ranking Engine (単一DB + Google Auth版)
 
 import json
 import math
+import re
 from collections import Counter
+from datetime import date
 
 import numpy as np
 from supabase import Client
@@ -24,6 +26,28 @@ ONBOARDING_CATEGORIES = [
     "政治", "経済", "国際", "IT・テクノロジー",
     "スポーツ", "エンタメ", "科学", "社会", "地方",
 ]
+
+# 大分類→中分類キーワードのマッピング
+CATEGORY_TAXONOMY: dict[str, list[str]] = {
+    "政治": ["選挙", "国会", "内閣", "与党", "野党", "外交", "防衛", "憲法", "政策", "行政"],
+    "経済": ["株式", "為替", "金融", "企業", "雇用", "貿易", "景気", "物価", "税制", "投資", "不動産"],
+    "国際": ["米国", "中国", "韓国", "北朝鮮", "ロシア", "EU", "中東", "アジア", "国連", "紛争"],
+    "IT・テクノロジー": ["AI", "人工知能", "スマホ", "セキュリティ", "SNS", "半導体", "ロボット", "宇宙", "通信", "ゲーム", "アプリ"],
+    "スポーツ": ["野球", "サッカー", "テニス", "ゴルフ", "バスケ", "陸上", "水泳", "格闘技", "相撲", "競馬", "五輪", "ラグビー"],
+    "エンタメ": ["映画", "音楽", "ドラマ", "アニメ", "芸能", "お笑い", "漫画", "舞台", "アイドル", "バラエティ"],
+    "科学": ["宇宙", "医療", "環境", "気候", "生物", "物理", "化学", "研究", "ノーベル", "発見"],
+    "社会": ["事件", "事故", "裁判", "福祉", "教育", "医療", "災害", "犯罪", "少子化", "高齢化"],
+    "地方": ["観光", "祭り", "特産", "自治体", "再開発", "過疎", "移住", "地域"],
+    "ビジネス": ["起業", "決算", "M&A", "IPO", "マーケティング", "人事", "経営"],
+    "生活": ["健康", "グルメ", "レシピ", "育児", "住まい", "ファッション", "旅行"],
+    "環境": ["気候変動", "脱炭素", "再生可能", "リサイクル", "生態系", "温暖化"],
+    "文化": ["文学", "美術", "歴史", "伝統", "哲学", "宗教", "建築"],
+}
+
+# カタカナ固有名詞抽出パターン（3文字以上）
+_KATAKANA_RE = re.compile(r"[ァ-ヴー]{3,}")
+# 「」内テキスト抽出パターン
+_BRACKET_RE = re.compile(r"「([^」]+)」")
 
 
 class RankingEngine:
@@ -207,6 +231,13 @@ class RankingEngine:
                 if r["id"] not in similar_ids and len(results) < top_n:
                     r["similarity"] = 0.0
                     results.append(r)
+
+        # 推薦理由を付与
+        top_cats = self._get_user_top_categories()
+        for r in results:
+            r["reason"] = self.explain_recommendation(
+                r, r.get("similarity", 0), top_cats
+            )
 
         return results
 
@@ -447,6 +478,192 @@ class RankingEngine:
             "missing_categories": missing,
             "total_viewed": len(viewed_ids),
         }
+
+    # --- 階層的カテゴリ分類 ---
+
+    @staticmethod
+    def _classify_medium(title: str, category: str) -> str:
+        """タイトル内キーワードマッチで中分類を返す。"""
+        cats = [c.strip() for c in category.split(",") if c.strip()] if category else []
+        for cat in cats:
+            keywords = CATEGORY_TAXONOMY.get(cat, [])
+            for kw in keywords:
+                if kw in title:
+                    return kw
+        # カテゴリ不一致でも全分類を走査
+        for keywords in CATEGORY_TAXONOMY.values():
+            for kw in keywords:
+                if kw in title:
+                    return kw
+        return "その他"
+
+    @staticmethod
+    def _extract_minor_keywords(title: str) -> list[str]:
+        """カタカナ固有名詞と「」内テキストを小分類として抽出。"""
+        minors: list[str] = []
+        for m in _KATAKANA_RE.finditer(title):
+            word = m.group()
+            # 一般的な語を除外
+            if word not in ("ニュース", "テレビ", "インター", "サービス", "システム", "プロジェクト", "コメント"):
+                minors.append(word)
+        for m in _BRACKET_RE.finditer(title):
+            minors.append(m.group(1))
+        return minors
+
+    def get_hierarchical_health(self) -> dict:
+        """大・中・小分類それぞれの情報的健康スコアを計算する。"""
+        interactions_resp = (
+            self.sb.table("user_interactions")
+            .select("article_id, interaction_type")
+            .eq("user_id", self.user_id)
+            .in_("interaction_type", ["view", "deep_dive"])
+            .execute()
+        )
+        viewed_ids = [r["article_id"] for r in (interactions_resp.data or [])]
+
+        empty = {
+            "distribution": {},
+            "diversity_score": 0,
+            "dominant": "",
+            "dominant_ratio": 0.0,
+        }
+        if not viewed_ids:
+            return {"major": empty, "medium": empty, "minor": empty, "total_viewed": 0}
+
+        art_resp = (
+            self.sb.table("articles")
+            .select("title, category")
+            .in_("id", viewed_ids)
+            .execute()
+        )
+
+        major_list: list[str] = []
+        medium_list: list[str] = []
+        minor_list: list[str] = []
+
+        for r in art_resp.data or []:
+            title = r.get("title", "")
+            category = r.get("category", "")
+            # 大分類
+            if category:
+                cats = [c.strip() for c in category.split(",") if c.strip()]
+                major_list.extend(cats)
+            # 中分類
+            med = self._classify_medium(title, category)
+            medium_list.append(med)
+            # 小分類
+            minor_list.extend(self._extract_minor_keywords(title))
+
+        def _calc_health(items: list[str]) -> dict:
+            if not items:
+                return {"distribution": {}, "diversity_score": 0, "dominant": "", "dominant_ratio": 0.0}
+            counter = Counter(items)
+            total = sum(counter.values())
+            n = len(counter)
+            if n <= 1:
+                score = 0
+            else:
+                entropy = -sum((c / total) * math.log2(c / total) for c in counter.values())
+                score = int((entropy / math.log2(n)) * 100)
+            dom, dom_count = counter.most_common(1)[0]
+            return {
+                "distribution": dict(counter.most_common(10)),
+                "diversity_score": score,
+                "dominant": dom,
+                "dominant_ratio": round(dom_count / total, 2),
+            }
+
+        return {
+            "major": _calc_health(major_list),
+            "medium": _calc_health(medium_list),
+            "minor": _calc_health(minor_list),
+            "total_viewed": len(viewed_ids),
+        }
+
+    # --- 推薦理由の説明 ---
+
+    def explain_recommendation(
+        self, article: dict, similarity: float, user_top_categories: list[str]
+    ) -> str:
+        """1行の推薦理由テキストを生成する。"""
+        category = article.get("category", "")
+        cats = [c.strip() for c in category.split(",") if c.strip()] if category else []
+
+        # ユーザの上位カテゴリとの一致チェック
+        matching = [c for c in cats if c in user_top_categories]
+
+        if similarity > 0.7:
+            pct = int(similarity * 100)
+            return f"あなたの関心と{pct}%マッチ"
+        elif matching:
+            return f"よく読む「{matching[0]}」カテゴリの記事"
+        elif similarity > 0.3:
+            pct = int(similarity * 100)
+            return f"関心に近い記事（{pct}%マッチ）"
+        elif cats:
+            return f"新しい視点: {cats[0]}"
+        else:
+            return "多様性のための提案"
+
+    def _get_user_top_categories(self, top_n: int = 3) -> list[str]:
+        """ユーザの閲覧履歴から上位カテゴリを返す。"""
+        resp = (
+            self.sb.table("user_interactions")
+            .select("article_id")
+            .eq("user_id", self.user_id)
+            .in_("interaction_type", ["view", "deep_dive"])
+            .limit(200)
+            .execute()
+        )
+        if not resp.data:
+            return []
+        ids = [r["article_id"] for r in resp.data]
+        cat_resp = (
+            self.sb.table("articles")
+            .select("category")
+            .in_("id", ids)
+            .execute()
+        )
+        all_cats: list[str] = []
+        for r in cat_resp.data or []:
+            if r.get("category"):
+                all_cats.extend(c.strip() for c in r["category"].split(",") if c.strip())
+        if not all_cats:
+            return []
+        return [c for c, _ in Counter(all_cats).most_common(top_n)]
+
+    # --- 健康スコア履歴 ---
+
+    def record_health_snapshot(self) -> None:
+        """現在の健康スコアを日次で記録する（同日は上書き）。"""
+        health = self.get_info_health()
+        if health["total_viewed"] == 0:
+            return
+        hier = self.get_hierarchical_health()
+        self.sb.table("health_score_history").upsert({
+            "user_id": self.user_id,
+            "score_date": date.today().isoformat(),
+            "diversity": health["diversity_score"],
+            "bias_ratio": health["dominant_ratio"],
+            "top_category": health["dominant_category"],
+            "detail": {
+                "major_diversity": hier["major"]["diversity_score"],
+                "medium_diversity": hier["medium"]["diversity_score"],
+                "minor_diversity": hier["minor"]["diversity_score"],
+            },
+        }, on_conflict="user_id,score_date").execute()
+
+    def get_health_history(self, days: int = 30) -> list[dict]:
+        """過去N日分の健康スコア履歴を取得する。"""
+        resp = (
+            self.sb.table("health_score_history")
+            .select("score_date, diversity, bias_ratio, top_category, detail")
+            .eq("user_id", self.user_id)
+            .order("score_date", desc=True)
+            .limit(days)
+            .execute()
+        )
+        return list(reversed(resp.data or []))
 
     # --- フィードバック ---
 
