@@ -1,6 +1,7 @@
 """
-Streamlit News Viewer (Cloud版 / Card Layout + Dashboard)
-タブ形式UIでニュース閲覧とダッシュボードを提供する。
+Streamlit News Viewer (分散アーキテクチャ版)
+共有DB（記事）と個人DB（ユーザデータ）を分離。
+オンボーディング、情報的健康パネル、3タブUIを提供する。
 """
 
 import pandas as pd
@@ -8,7 +9,7 @@ import requests
 import streamlit as st
 from supabase import create_client
 
-from engine import RankingEngine
+from engine import ONBOARDING_CATEGORIES, RankingEngine
 
 st.set_page_config(page_title="OwnNews", page_icon="📰", layout="wide")
 
@@ -16,17 +17,14 @@ st.set_page_config(page_title="OwnNews", page_icon="📰", layout="wide")
 
 st.markdown("""
 <style>
-/* カード全体 */
 div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
     padding: 0 !important;
 }
-/* ボタンを小さく */
 div.stButton > button {
     font-size: 0.75rem;
     padding: 0.15rem 0.5rem;
     min-height: 0;
 }
-/* カード画像の角丸 */
 div[data-testid="stImage"] img {
     border-radius: 6px;
     object-fit: cover;
@@ -38,19 +36,32 @@ PLACEHOLDER_IMG = "https://placehold.co/400x200/e8e8e8/999?text=No+Image"
 COLS_PER_ROW = 3
 
 
-# --- Supabase ---
+# --- Supabase 2-DB接続 ---
 
 @st.cache_resource
-def get_supabase():
+def get_articles_db():
+    """共有DB（記事用）クライアント。"""
     return create_client(
-        st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_KEY"],
+        st.secrets["ARTICLES_SUPABASE_URL"],
+        st.secrets["ARTICLES_SUPABASE_KEY"],
+    )
+
+
+@st.cache_resource
+def get_user_db():
+    """個人DB（ユーザデータ用）クライアント。"""
+    return create_client(
+        st.secrets["USER_SUPABASE_URL"],
+        st.secrets["USER_SUPABASE_KEY"],
     )
 
 
 @st.cache_resource
 def get_engine():
-    return RankingEngine(supabase=get_supabase())
+    return RankingEngine(
+        articles_db=get_articles_db(),
+        user_db=get_user_db(),
+    )
 
 
 # --- Groq 深掘り ---
@@ -87,6 +98,160 @@ def deep_dive(title: str, summary: str) -> str:
     return resp.json()["choices"][0]["message"]["content"]
 
 
+# --- オンボーディング ---
+
+def render_onboarding(engine: RankingEngine) -> None:
+    """初回起動時のオンボーディング画面を描画する。"""
+    st.title("📰 OwnNews へようこそ！")
+    st.markdown(
+        "あなたの興味に合わせたニュースフィードを作成します。\n"
+        "まず、興味のあるカテゴリを選択し、表示される記事に投票してください。"
+    )
+
+    # ステップ1: カテゴリ選択
+    if "onboard_step" not in st.session_state:
+        st.session_state["onboard_step"] = 1
+
+    if st.session_state["onboard_step"] == 1:
+        st.subheader("① 興味のあるカテゴリを選択")
+        selected = []
+        cols = st.columns(3)
+        for i, cat in enumerate(ONBOARDING_CATEGORIES):
+            with cols[i % 3]:
+                if st.checkbox(cat, value=True, key=f"ob_cat_{i}"):
+                    selected.append(cat)
+
+        if st.button("次へ →", disabled=len(selected) == 0):
+            st.session_state["onboard_categories"] = selected
+            st.session_state["onboard_step"] = 2
+            st.rerun()
+
+    # ステップ2: 記事への投票
+    elif st.session_state["onboard_step"] == 2:
+        st.subheader("② 記事に投票してください")
+        st.caption("👍 興味あり / 👎 興味なし を押してください")
+
+        categories = st.session_state.get("onboard_categories", [])
+        if "onboard_articles" not in st.session_state:
+            articles = engine.get_onboarding_articles(categories, count=15)
+            st.session_state["onboard_articles"] = articles
+            st.session_state["onboard_votes"] = {}
+
+        articles = st.session_state["onboard_articles"]
+        votes = st.session_state["onboard_votes"]
+
+        if not articles:
+            st.warning("記事がまだ収集されていません。オンボーディングをスキップします。")
+            engine.complete_onboarding([], [])
+            _clear_onboarding_state()
+            st.rerun()
+            return
+
+        for i, article in enumerate(articles):
+            with st.container(border=True):
+                c1, c2 = st.columns([4, 1])
+                with c1:
+                    title = article.get("title", "")
+                    cat = article.get("category", "")
+                    st.markdown(f"**{title}**")
+                    if cat:
+                        st.caption(cat)
+                with c2:
+                    current_vote = votes.get(article["id"])
+                    b1, b2 = st.columns(2)
+                    with b1:
+                        liked = st.button(
+                            "👍" if current_vote != "like" else "✅",
+                            key=f"ob_like_{i}",
+                        )
+                        if liked:
+                            votes[article["id"]] = "like"
+                            st.rerun()
+                    with b2:
+                        disliked = st.button(
+                            "👎" if current_vote != "dislike" else "❌",
+                            key=f"ob_dislike_{i}",
+                        )
+                        if disliked:
+                            votes[article["id"]] = "dislike"
+                            st.rerun()
+
+        voted_count = len(votes)
+        st.progress(min(1.0, voted_count / max(1, len(articles))))
+        st.caption(f"{voted_count} / {len(articles)} 件投票済み")
+
+        if st.button(
+            "完了 → ニュースを見る",
+            disabled=voted_count < 3,
+            type="primary",
+        ):
+            liked_ids = [k for k, v in votes.items() if v == "like"]
+            disliked_ids = [k for k, v in votes.items() if v == "dislike"]
+            engine.complete_onboarding(liked_ids, disliked_ids)
+            _clear_onboarding_state()
+            st.rerun()
+
+
+def _clear_onboarding_state() -> None:
+    """オンボーディング用のセッション変数をクリアする。"""
+    for key in [
+        "onboard_step", "onboard_categories",
+        "onboard_articles", "onboard_votes",
+    ]:
+        st.session_state.pop(key, None)
+
+
+# --- 情報的健康パネル（サイドバー） ---
+
+def render_info_health_panel(engine: RankingEngine) -> None:
+    """サイドバーに情報的健康パネルを描画する。"""
+    st.header("🥗 情報的健康")
+
+    health = engine.get_info_health()
+    total = health["total_viewed"]
+
+    if total == 0:
+        st.caption("記事を閲覧すると、情報摂取の\nバランスが表示されます。")
+        return
+
+    # 多様性スコア（ゲージ風表示）
+    score = health["diversity_score"]
+    bias = health["bias_level"]
+
+    if score >= 70:
+        score_color = "🟢"
+    elif score >= 40:
+        score_color = "🟡"
+    else:
+        score_color = "🔴"
+
+    st.metric("多様性スコア", f"{score_color} {score}/100")
+    st.caption(f"偏食度: {bias}")
+
+    # カテゴリ別摂取バランス（横棒グラフ）
+    dist = health["category_distribution"]
+    if dist:
+        st.caption("カテゴリ別 摂取量")
+        df = pd.DataFrame(
+            list(dist.items()),
+            columns=["カテゴリ", "件数"],
+        ).sort_values("件数", ascending=True)
+        st.bar_chart(df, x="カテゴリ", y="件数", horizontal=True)
+
+    # 最頻カテゴリ
+    if health["dominant_category"]:
+        ratio_pct = int(health["dominant_ratio"] * 100)
+        st.caption(
+            f"最多: **{health['dominant_category']}** ({ratio_pct}%)"
+        )
+
+    # 不足カテゴリの提案
+    missing = health["missing_categories"]
+    if missing:
+        suggestions = "、".join(missing[:3])
+        st.info(f"💡 **{suggestions}** の記事も\n読んでみましょう")
+
+
 # --- カード描画 ---
 
 def render_card(article: dict, index: int, engine: RankingEngine) -> None:
@@ -100,16 +265,11 @@ def render_card(article: dict, index: int, engine: RankingEngine) -> None:
     published = article.get("published", "")
 
     with st.container(border=True):
-        # サムネイル画像
         st.image(img, use_container_width=True)
-
-        # タイトル（リンク）+ スコア
         st.markdown(
             f"**[{title}]({link})**"
             f" &nbsp;`{score_pct:.0f}%`"
         )
-
-        # メタ情報
         meta = []
         if published:
             meta.append(published[:16])
@@ -118,7 +278,6 @@ def render_card(article: dict, index: int, engine: RankingEngine) -> None:
         if meta:
             st.caption(" ／ ".join(meta))
 
-        # アクションボタン（横並び）
         c1, c2, c3 = st.columns(3)
         with c1:
             if st.button("👁", key=f"r_{index}", help="閲覧として記録"):
@@ -152,6 +311,9 @@ def render_news_tab(engine: RankingEngine) -> None:
             help="1.0=パーソナライズ強 / 0.0=多様性重視",
         )
         top_n = st.slider("表示件数", 6, 60, 30, step=3)
+
+        st.divider()
+        render_info_health_panel(engine)
 
     # --- 深掘り結果の表示 ---
     if "dive_result" in st.session_state:
@@ -224,17 +386,14 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
         st.error(f"統計情報の取得に失敗しました: {e}")
         return
 
-    # ===== 上段: 統計エリア =====
     st.subheader("統計")
     col_metrics, col_category, col_daily = st.columns(3)
 
-    # --- メトリクス ---
     with col_metrics:
         st.metric("総記事数", f"{stats['total_articles']:,}")
         st.metric("閲覧済み", f"{stats['view_count']:,}")
         st.metric("興味なし", f"{stats['not_interested_count']:,}")
 
-    # --- カテゴリ別閲覧数 ---
     with col_category:
         st.caption("カテゴリ別 閲覧数")
         cat_counts = stats.get("category_counts", {})
@@ -247,7 +406,6 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
         else:
             st.caption("まだ閲覧データがありません")
 
-    # --- 日別収集数 ---
     with col_daily:
         st.caption("日別 記事収集数")
         daily_counts = stats.get("daily_counts", {})
@@ -256,7 +414,6 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
                 list(daily_counts.items()),
                 columns=["日付", "件数"],
             ).sort_values("日付")
-            # 直近14日に絞る
             df_daily = df_daily.tail(14)
             st.line_chart(df_daily, x="日付", y="件数")
         else:
@@ -264,11 +421,9 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
 
     st.divider()
 
-    # ===== 下段: 閲覧履歴 =====
     st.subheader("履歴")
     col_viewed, col_disliked = st.columns(2)
 
-    # --- 閲覧済み ---
     with col_viewed:
         st.markdown("**👁 閲覧した記事**")
         viewed = engine.get_interaction_history(
@@ -295,7 +450,6 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
         else:
             st.caption("まだ閲覧履歴がありません")
 
-    # --- 興味なし ---
     with col_disliked:
         st.markdown("**👎 興味なしにした記事**")
         disliked = engine.get_interaction_history(
@@ -322,20 +476,70 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
             st.caption("まだデータがありません")
 
 
+# --- Tab 3: フィルタ比較（Phase 2 プレースホルダ） ---
+
+def render_filter_tab(engine: RankingEngine) -> None:
+    """フィルタ比較タブ（Phase 2 で本格実装）。"""
+    st.subheader("🔄 フィルタ比較")
+    st.info(
+        "**この機能は Phase 2 で実装予定です。**\n\n"
+        "将来的に以下の機能が追加されます：\n"
+        "- 自分のフィルタ（関心ベクトル）を公開\n"
+        "- 他のユーザのフィルタでニュースを閲覧\n"
+        "- 情報摂取バランスの比較（レーダーチャート）\n"
+        "- Federated Learning による推薦精度の向上"
+    )
+
+    # 現在の情報的健康サマリーを表示
+    health = engine.get_info_health()
+    if health["total_viewed"] > 0:
+        st.subheader("あなたの情報プロファイル")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("多様性スコア", f"{health['diversity_score']}/100")
+            st.metric("偏食度", health["bias_level"])
+        with col2:
+            st.metric("閲覧記事数", health["total_viewed"])
+            if health["dominant_category"]:
+                st.metric(
+                    "最多カテゴリ",
+                    health["dominant_category"],
+                )
+
+        dist = health["category_distribution"]
+        if dist:
+            st.caption("カテゴリ分布")
+            df = pd.DataFrame(
+                list(dist.items()),
+                columns=["カテゴリ", "件数"],
+            ).sort_values("件数", ascending=False)
+            st.bar_chart(df, x="カテゴリ", y="件数")
+
+
 # --- メインUI ---
 
 def main() -> None:
-    st.title("📰 OwnNews")
-
     engine = get_engine()
 
-    tab_news, tab_dashboard = st.tabs(["ニュース", "ダッシュボード"])
+    # オンボーディング未完了なら専用画面
+    if not engine.is_onboarded():
+        render_onboarding(engine)
+        return
+
+    st.title("📰 OwnNews")
+
+    tab_news, tab_dashboard, tab_filter = st.tabs(
+        ["ニュース", "ダッシュボード", "フィルタ比較"]
+    )
 
     with tab_news:
         render_news_tab(engine)
 
     with tab_dashboard:
         render_dashboard_tab(engine)
+
+    with tab_filter:
+        render_filter_tab(engine)
 
 
 if __name__ == "__main__":

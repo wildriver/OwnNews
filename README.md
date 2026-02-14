@@ -1,224 +1,164 @@
-# OwnNews — 自律型パーソナル・ニュースキュレーター (Cloud版)
+# OwnNews — 分散型パーソナル・ニュースキュレーター
 
-中央集権的なプラットフォーマーに依存せず、無料クラウドサービスのみでニュースの収集・解析・推薦を行うパーソナルキュレーターです。
+中央集権的なプラットフォーマーに依存せず、ユーザーが自分のデータを自分で管理する分散型ニュースキュレーターです。記事データは共有DBで提供し、閲覧履歴・学習データは各ユーザーの個人DBで管理します。
+
+## コンセプト
+
+- **分散アーキテクチャ**: 記事は共有DB（運営者管理）、ユーザデータは個人DB（ユーザ管理）
+- **情報的健康**: 食事の栄養バランスのアナロジーで情報摂取の偏りを可視化
+- **コールドスタート解決**: オンボーディングでカテゴリ選択 + 記事投票
 
 ## アーキテクチャ
 
 ```
-GitHub Actions (毎時cron)
+GitHub Actions (1日5回cron)
   │  ① RSS取得 (news.ceek.jp)
   │  ② Cloudflare Workers AI でベクトル化
-  │  ③ Supabase へ保存
+  │  ③ 共有DB へ保存
   ▼
-┌─────────────────────────┐
-│  Supabase               │
-│  Postgres + pgvector    │
-│  ├─ articles (embedding)│
-│  └─ user_vectors        │
-└────────┬────────────────┘
-         │ ベクトル類似度検索
-         ▼
-┌─────────────────────────┐
-│  Streamlit Community    │
-│  Cloud (UI)             │
-│  ├─ フィルタスライダー    │
-│  ├─ 👍 フィードバック     │
-│  └─ 🔍 深掘り → Groq    │
-└─────────────────────────┘
+┌──────────────────────────┐     ┌──────────────────────────┐
+│  共有DB（運営者管理）      │     │  個人DB（ユーザ管理）      │
+│  Supabase + pgvector     │     │  Supabase + pgvector     │
+│  ├─ articles (embedding) │     │  ├─ user_profile         │
+│  ├─ match_articles() RPC │     │  ├─ user_vectors         │
+│  ├─ random_articles() RPC│     │  └─ user_interactions    │
+│  └─ public_filters (Ph2) │     │                          │
+│  → SELECT のみ許可 (RLS)  │     │  → 各ユーザが自分で用意   │
+└───────────┬──────────────┘     └──────────┬───────────────┘
+            │ 記事取得（読み取り専用）         │ ユーザデータ（読み書き）
+            └───────────┬──────────────────────┘
+                        ▼
+              ┌──────────────────┐
+              │  Streamlit Cloud │
+              │  (UI)            │
+              │  ├─ オンボーディング│
+              │  ├─ ニュースフィード│
+              │  ├─ 情報的健康パネル│
+              │  ├─ ダッシュボード  │
+              │  └─ 🔍 深掘り→Groq│
+              └──────────────────┘
 ```
 
 | 役割 | サービス | 無料枠 |
 |------|---------|--------|
-| 定期収集 | GitHub Actions | パブリックリポジトリ無制限 / プライベート 2,000分/月 |
-| DB + ベクトル検索 | Supabase (Postgres + pgvector) | 500MB DB / 無制限API |
+| 定期収集 | GitHub Actions | パブリックリポジトリ無制限 |
+| 共有DB | Supabase (Postgres + pgvector) | 500MB DB |
+| 個人DB | Supabase (各ユーザ) | 500MB DB |
 | 埋め込み | Cloudflare Workers AI | 10,000 neurons/日 |
-| 深掘り推論 | Groq API | 無料枠あり (モデルにより異なる) |
+| 深掘り推論 | Groq API | 無料枠あり |
 | UI | Streamlit Community Cloud | パブリックアプリ無料 |
 
 ## セットアップ
 
-### 1. Supabase プロジェクト作成
+### 運営者向け（共有DB + 収集パイプライン）
 
-#### 1-1. プロジェクトを作成する
+#### 1. 共有DB (Supabase) を作成
 
-1. [supabase.com](https://supabase.com) にアクセスし、アカウントを作成・ログイン
-2. **New Project** をクリック
-3. 以下を入力して **Create new project**:
-   - **Project name**: `OwnNews`（任意）
-   - **Database Password**: 安全なパスワードを設定（控えておく）
-   - **Region**: `Northeast Asia (Tokyo)` を推奨（日本からのアクセスが速い）
+1. [supabase.com](https://supabase.com) でプロジェクトを作成
+2. **SQL Editor** で [schema_articles.sql](schema_articles.sql) を実行
+3. **Project Settings > API** から URL と anon key を控える
 
-#### 1-2. データベースのスキーマを作成する
+#### 2. Cloudflare Workers AI を設定
 
-1. ダッシュボード左メニューの **SQL Editor** をクリック
-2. [supabase_schema.sql](supabase_schema.sql) の内容をすべてコピーして貼り付け
-3. **Run** ボタンをクリック
-4. `Success. No rows returned` と表示されれば完了
+1. [dash.cloudflare.com](https://dash.cloudflare.com) でアカウント作成
+2. **Workers & Pages** から Account ID を取得
+3. **My Profile > API Tokens** で Workers AI Read 権限のトークンを作成
 
-#### 1-3. SUPABASE_URL と SUPABASE_KEY を取得する
+#### 3. GitHub リポジトリ設定
 
-1. ダッシュボード左メニューの **Project Settings**（歯車アイコン）をクリック
-2. 左メニューの **API** をクリック
-3. 以下の2つの値を控える:
+Repository secrets に以下を登録:
 
-| 項目 | 画面上の表示 | 値の形式 |
-|------|-------------|---------|
-| `SUPABASE_URL` | **Project URL** | `https://xxxxx.supabase.co` |
-| `SUPABASE_KEY` | **Project API keys** > `anon` `public` | `eyJhbGci...` で始まる長い文字列 |
+| Name | 値 |
+|------|---|
+| `SUPABASE_URL` | 共有DBの Project URL |
+| `SUPABASE_KEY` | 共有DBの anon public キー |
+| `CF_ACCOUNT_ID` | Cloudflare Account ID |
+| `CF_API_TOKEN` | Cloudflare API Token |
 
-> **注意**: ダッシュボードのURL（`https://supabase.com/dashboard/project/xxxxx`）と **Project URL**（`https://xxxxx.supabase.co`）は別物です。アプリで使うのは後者です。
->
-> 例えばダッシュボードURLが `https://supabase.com/dashboard/project/tcajofghsbskpstxpjwi` の場合、
-> Project URL は `https://tcajofghsbskpstxpjwi.supabase.co` になります。
+#### 4. 動作確認
 
-### 2. Cloudflare Workers AI
+**Actions** タブ > **Collect News** > **Run workflow** で手動実行。
 
-#### 2-1. アカウント作成
+### 利用者向け（個人DB + アプリ）
 
-1. [dash.cloudflare.com](https://dash.cloudflare.com) にアクセスし、アカウントを作成（無料プランでOK）
-2. ログイン後、ダッシュボードが表示される
+#### 1. 個人DB (Supabase) を作成
 
-#### 2-2. Account ID を取得
+1. [supabase.com](https://supabase.com) で **自分用の** プロジェクトを作成
+2. **SQL Editor** で [schema_user.sql](schema_user.sql) を実行
+3. **Project Settings > API** から URL と anon key を控える
 
-1. ダッシュボード左メニューから **Workers & Pages** をクリック
-2. 画面右サイドバーに **Account ID** が表示されている
-3. この値をコピーして控える → `CF_ACCOUNT_ID`
+#### 2. Streamlit アプリを設定
 
-#### 2-3. API Token を作成
-
-1. ダッシュボード右上のアイコン > **My Profile** をクリック
-2. 左メニューの **API Tokens** をクリック
-3. **Create Token** ボタンをクリック
-4. 下部の **Create Custom Token** > **Get started** をクリック
-5. 以下を設定する:
-   - **Token name**: `OwnNews Workers AI` (任意の名前)
-   - **Permissions**:
-     - ドロップダウン1つ目: `Account`
-     - ドロップダウン2つ目: `Workers AI`
-     - ドロップダウン3つ目: `Read`
-   - **Account Resources**: `Include` > 自分のアカウントを選択
-6. **Continue to summary** > 内容を確認 > **Create Token**
-7. 表示されたトークンをコピーして控える → `CF_API_TOKEN`
-
-> **注意**: トークンは **一度しか表示されません**。必ずこの画面でコピーしてください。
-
-#### 2-4. 動作確認 (curl)
-
-ターミナルで以下を実行し、レスポンスが返ればOKです:
-
-```bash
-curl https://api.cloudflare.com/client/v4/accounts/{CF_ACCOUNT_ID}/ai/run/@cf/baai/bge-base-en-v1.5 \
-  -H "Authorization: Bearer {CF_API_TOKEN}" \
-  -d '{"text": ["テスト文章"]}'
-```
-
-成功時のレスポンス例:
-
-```json
-{
-  "result": {
-    "shape": [1, 768],
-    "data": [[0.0234, -0.0156, ...]]
-  },
-  "success": true
-}
-```
-
-#### 2-5. 無料枠について
-
-- Workers AI の無料枠は **1日あたり 10,000 neurons**
-- `bge-base-en-v1.5` の場合、1リクエストあたり約 500 neurons 消費（テキスト量に依存）
-- 毎時cron で1回あたり数十件の新規記事であれば、無料枠内で十分に運用可能
-
-### 3. Groq API (深掘り機能用、任意)
-
-1. [console.groq.com](https://console.groq.com) でAPIキーを取得 → `GROQ_API_KEY`
-
-### 4. GitHub リポジトリ設定
-
-APIキーなどの機密情報を GitHub Actions から安全に参照するため、**Repository secrets** に登録します。
-
-> **secrets と variables の違い**: secrets は暗号化されログにもマスクされる（APIキー向け）。variables は平文で保存される（設定値向け）。今回はすべて機密情報なので **secrets** を使います。
->
-> **Repository と Environment の違い**: Environment secrets は特定の環境（production / staging 等）に紐づきます。今回はワークフローが1つだけなので、シンプルな **Repository secrets** で十分です。
-
-#### 4-1. Repository secrets を登録する
-
-1. リポジトリページ（https://github.com/wildriver/OwnNews）を開く
-2. 上部タブの **Settings** をクリック
-3. 左メニューの **Secrets and variables** > **Actions** をクリック
-4. **Secrets** タブが選択されていることを確認（デフォルトで選択済み）
-5. **New repository secret** ボタンをクリック
-6. 以下の4つを1つずつ登録する:
-
-| Name | Value の内容 |
-|------|-------------|
-| `SUPABASE_URL` | Supabase の Project URL（例: `https://xxxxx.supabase.co`） |
-| `SUPABASE_KEY` | Supabase の `anon public` キー（`eyJ...` で始まる文字列） |
-| `CF_ACCOUNT_ID` | Cloudflare の Account ID |
-| `CF_API_TOKEN` | Cloudflare の API Token |
-
-各項目について:
-- **Name** 欄: 上記の名前を正確に入力（大文字・アンダースコア）
-- **Secret** 欄: 対応する値を貼り付け
-- **Add secret** ボタンをクリック
-
-登録後、一覧に4つの secrets が表示されていれば完了です（値は `***` でマスクされます）。
-
-#### 4-2. ワークフローを手動実行して動作確認
-
-1. リポジトリ上部の **Actions** タブをクリック
-2. 左メニューから **Collect News** を選択
-3. **Run workflow** ボタン > ブランチが `main` であることを確認 > **Run workflow**
-4. 実行が始まるので、クリックしてログを確認
-5. `Collected X new articles.` と表示されれば成功
-
-### 5. Streamlit Community Cloud にデプロイ
-
-1. [share.streamlit.io](https://share.streamlit.io) でGitHubリポジトリを連携
-2. メインファイルに `app.py` を指定
-3. **Advanced settings > Secrets** に以下を設定:
+Streamlit Community Cloud（または ローカル）で `.streamlit/secrets.toml` を設定:
 
 ```toml
-SUPABASE_URL = "https://xxxxx.supabase.co"
-SUPABASE_KEY = "eyJ..."
+# 共有DB（運営者から提供される値）
+ARTICLES_SUPABASE_URL = "https://xxxxx.supabase.co"
+ARTICLES_SUPABASE_KEY = "eyJ..."
+
+# 個人DB（自分のSupabase）
+USER_SUPABASE_URL = "https://yyyyy.supabase.co"
+USER_SUPABASE_KEY = "eyJ..."
+
+# オプション
 GROQ_API_KEY = "gsk_..."
 ```
 
+#### 3. 初回起動
+
+アプリを開くとオンボーディング画面が表示されます:
+1. 興味のあるカテゴリを選択
+2. 表示される記事に 👍/👎 で投票
+3. 初期関心ベクトルが生成され、パーソナライズされたフィードが表示されます
+
 ## 使い方
 
-### フィルタ強度スライダー
+### ニュースタブ
 
-| 値 | 動作 |
-|----|------|
-| **1.0 に近い** | パーソナライズ強: 関心に近い記事のみ表示 |
-| **0.5（デフォルト）** | バランス型: 類似記事15件 + ランダム15件 |
-| **0.0 に近い** | セレンディピティ重視: ほぼ全件ランダム表示 |
+- **フィルタ強度**: 1.0（パーソナライズ強） ↔ 0.0（多様性重視）
+- **👁 閲覧記録**: 弱い正のフィードバック (α=0.03)
+- **🔍 深掘り**: Groq API で背景分析 + 強い正のフィードバック (α=0.15)
+- **👎 興味なし**: 強い負のフィードバック (α=-0.2)
 
-### フィードバック学習
+### 情報的健康パネル（サイドバー）
 
-各記事の **👍** ボタンをクリックすると、ユーザー関心ベクトルが更新されます。
+食事の栄養バランスのアナロジーで、情報摂取の偏りを可視化します:
 
-```
-u_new = (1 - α) * u_old + α * v_clicked    (α = 0.1)
-```
+| 指標 | 計算方法 |
+|------|---------|
+| 多様性スコア | Shannon entropy（0-100に正規化） |
+| 偏食度 | 最頻カテゴリの占有率 |
+| 不足カテゴリ | 閲覧数0のカテゴリを提案 |
 
-### 深掘り機能
+### ダッシュボードタブ
 
-**🔍 深掘り** ボタンをクリックすると、Groq API (Llama 3.3 70B) が記事の背景・影響・今後の展望を分析します。オンデマンド実行のためコストを抑えられます。
+- 統計（総記事数、閲覧数、興味なし数）
+- カテゴリ別閲覧グラフ
+- 日別記事収集数
+- 閲覧履歴・除外履歴
+
+### フィルタ比較タブ（Phase 2）
+
+将来的に実装予定:
+- 自分のフィルタを公開
+- 他ユーザのフィルタでニュースを閲覧
+- 情報摂取バランスの比較
+- Federated Learning による推薦精度向上
 
 ## ファイル構成
 
 ```
 OwnNews/
 ├── .github/workflows/
-│   └── collect.yml              # GitHub Actions (毎時cron)
+│   └── collect.yml              # GitHub Actions (1日5回cron)
 ├── .streamlit/
 │   └── secrets.toml.example     # シークレット設定テンプレート
-├── collector.py                  # RSS収集 + Cloudflare Embed + Supabase保存
-├── engine.py                     # Supabase pgvector ランキングエンジン
-├── app.py                        # Streamlit UI + Groq深掘り
-├── supabase_schema.sql           # DBセットアップ用SQL
+├── collector.py                  # RSS収集 + Cloudflare Embed + 共有DB保存
+├── engine.py                     # 2-DB ランキングエンジン + 情報的健康
+├── app.py                        # Streamlit UI (3タブ + オンボーディング)
+├── schema_articles.sql           # 共有DBセットアップ用SQL
+├── schema_user.sql               # 個人DBセットアップ用SQL
+├── supabase_schema.sql           # (旧) 単一DBスキーマ（参考用）
 ├── requirements.txt              # Python依存パッケージ
 └── README.md                     # 本ファイル
 ```
@@ -227,9 +167,9 @@ OwnNews/
 
 | 項目 | 場所 | デフォルト値 |
 |------|------|-------------|
-| Embedding モデル | `collector.py` `CF_MODEL` | `@cf/baai/bge-base-en-v1.5` |
-| ベクトル次元数 | `supabase_schema.sql` | 768 |
-| Groq モデル | `app.py` `deep_dive()` | `llama-3.3-70b-versatile` |
-| RSS フィード一覧 | `collector.py` `FEEDS` | news.ceek.jp 全13カテゴリ |
-| 学習率 (α) | `engine.py` `update_user_vector()` | `0.1` |
-| 収集間隔 | `.github/workflows/collect.yml` | 毎時0分 |
+| Embedding モデル | `collector.py` | `@cf/baai/bge-base-en-v1.5` |
+| ベクトル次元数 | `schema_articles.sql` | 768 |
+| Groq モデル | `app.py` | `llama-3.3-70b-versatile` |
+| RSS フィード | `collector.py` | news.ceek.jp 全13カテゴリ |
+| 収集間隔 | `collect.yml` | 1日5回 (JST 6,11,16,18,21時) |
+| フィードバック学習率 | `engine.py` | 👁 α=0.03 / 🔍 α=0.15 / 👎 α=-0.2 |
