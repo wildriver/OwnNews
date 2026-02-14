@@ -3,3 +3,4 @@ requests
 numpy
 streamlit
 supabase
+Authlib>=1.3.2
