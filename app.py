@@ -261,6 +261,20 @@ def render_info_health_panel(engine: RankingEngine) -> None:
 
 # --- カード描画 ---
 
+def _do_interaction(engine: RankingEngine, aid: str, action: str, title: str) -> None:
+    """インタラクションを記録してフィードを更新する。"""
+    try:
+        if action == "view":
+            engine.record_view(aid)
+        elif action == "deep_dive":
+            engine.record_deep_dive(aid)
+        elif action == "not_interested":
+            engine.record_not_interested(aid)
+        _invalidate_feed()
+    except Exception as e:
+        st.error(f"記録に失敗しました: {e}")
+
+
 def render_card(article: dict, engine: RankingEngine) -> None:
     aid = article["id"]
     img = article.get("image_url") or PLACEHOLDER_IMG
@@ -268,47 +282,49 @@ def render_card(article: dict, engine: RankingEngine) -> None:
     score_pct = max(0, min(100, similarity * 100))
     title = article.get("title", "")
     link = article.get("link", "")
+    summary = article.get("summary", "")
     category = article.get("category", "")
     published = article.get("published", "")
 
     with st.container(border=True):
         st.image(img, use_container_width=True)
-        st.markdown(
-            f"**[{title}]({link})**"
-            f" &nbsp;`{score_pct:.0f}%`"
-        )
+
         meta = []
         if published:
             meta.append(published[:16])
         if category:
             meta.append(category)
-        if meta:
-            st.caption(" ／ ".join(meta))
+        meta.append(f"マッチ {score_pct:.0f}%")
+        st.caption(" ／ ".join(meta))
+
+        # 記事を内部展開（クリックで開閉）
+        with st.expander(title, expanded=False):
+            if summary:
+                st.markdown(summary)
+            st.markdown(f"[🔗 元記事を開く]({link})")
+
+            # 深掘り結果
+            dive_key = f"dive_{aid}"
+            if dive_key in st.session_state:
+                st.info(st.session_state[dive_key])
 
         c1, c2, c3 = st.columns(3)
         with c1:
-            if st.button("👁", key=f"r_{aid}", help="閲覧として記録"):
-                engine.record_view(aid)
-                st.toast(f"「{title[:15]}…」を記録")
-                _invalidate_feed()
+            if st.button("👁 閲覧", key=f"r_{aid}"):
+                _do_interaction(engine, aid, "view", title)
                 st.rerun()
         with c2:
-            if st.button("🔍", key=f"d_{aid}", help="深掘り分析"):
-                engine.record_deep_dive(aid)
+            if st.button("🔍 深掘り", key=f"d_{aid}"):
+                _do_interaction(engine, aid, "deep_dive", title)
                 try:
-                    analysis = deep_dive(title, article.get("summary", ""))
+                    analysis = deep_dive(title, summary)
                 except Exception as e:
                     analysis = f"分析失敗: {e}"
-                st.session_state["dive_result"] = {
-                    "title": title, "analysis": analysis,
-                }
-                _invalidate_feed()
+                st.session_state[f"dive_{aid}"] = analysis
                 st.rerun()
         with c3:
-            if st.button("👎", key=f"x_{aid}", help="興味なし"):
-                engine.record_not_interested(aid)
-                st.toast(f"「{title[:15]}…」を除外")
-                _invalidate_feed()
+            if st.button("👎 除外", key=f"x_{aid}"):
+                _do_interaction(engine, aid, "not_interested", title)
                 st.rerun()
 
 
@@ -343,11 +359,6 @@ def render_news_tab(engine: RankingEngine) -> None:
 
         st.divider()
         render_info_health_panel(engine)
-
-    # 深掘り結果の表示
-    if "dive_result" in st.session_state:
-        dive = st.session_state.pop("dive_result")
-        st.info(f"🔍 **{dive['title']}**\n\n{dive['analysis']}")
 
     # 記事取得（セッションにキャッシュして rerun 間で安定させる）
     cache_key = f"feed_{filter_strength:.2f}_{top_n}"
