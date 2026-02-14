@@ -261,7 +261,10 @@ def render_info_health_panel(engine: RankingEngine) -> None:
 
 # --- カード描画 ---
 
-def _do_interaction(engine: RankingEngine, aids: list[str], action: str) -> None:
+def _do_interaction(
+    engine: RankingEngine, aids: list[str], action: str,
+    invalidate: bool = False,
+) -> None:
     """インタラクションを記録する。グループ内の全記事IDに適用。"""
     try:
         for aid in aids:
@@ -271,7 +274,8 @@ def _do_interaction(engine: RankingEngine, aids: list[str], action: str) -> None
                 engine.record_deep_dive(aid)
             elif action == "not_interested":
                 engine.record_not_interested(aid)
-        _invalidate_feed()
+        if invalidate:
+            _invalidate_feed()
     except Exception as e:
         st.error(f"記録に失敗しました: {e}")
 
@@ -308,15 +312,15 @@ def render_card(group: dict, engine: RankingEngine) -> None:
             meta.append(f"関連 {len(related)}件")
         st.caption(" ／ ".join(meta))
 
-        # タイトルクリックで展開 + 閲覧記録
+        # タイトルクリックで展開 + 閲覧記録（フィード維持）
         if st.button(
             f"{'▼' if is_open else '▶'} {title}",
             key=f"toggle_{aid}",
             use_container_width=True,
         ):
             if not is_open:
-                # 初回展開時に閲覧記録
-                _do_interaction(engine, all_ids, "view")
+                # 初回展開時に閲覧記録（フィードは維持）
+                _do_interaction(engine, all_ids, "view", invalidate=False)
             st.session_state[open_key] = not is_open
             st.rerun()
 
@@ -339,7 +343,7 @@ def render_card(group: dict, engine: RankingEngine) -> None:
         c1, c2 = st.columns(2)
         with c1:
             if st.button("🔍 深掘り", key=f"d_{aid}"):
-                _do_interaction(engine, all_ids, "deep_dive")
+                _do_interaction(engine, all_ids, "deep_dive", invalidate=False)
                 try:
                     analysis = deep_dive(title, summary)
                 except Exception as e:
@@ -349,7 +353,7 @@ def render_card(group: dict, engine: RankingEngine) -> None:
                 st.rerun()
         with c2:
             if st.button("👎 除外", key=f"x_{aid}"):
-                _do_interaction(engine, all_ids, "not_interested")
+                _do_interaction(engine, all_ids, "not_interested", invalidate=True)
                 st.rerun()
 
 
