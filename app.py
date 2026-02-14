@@ -111,13 +111,20 @@ div[data-testid="stImage"] img {
     }
 }
 </style>
+""", unsafe_allow_html=True)
 
+# JS注入: st.markdownの<script>はReactに干渉するため、components.v1.htmlで注入
+import streamlit.components.v1 as components
+components.html("""
 <script>
-function toggleDetail(detailId) {
-    var el = document.getElementById(detailId);
+document.addEventListener('click', function(e) {
+    var row = e.target.closest('[data-detail]');
+    if (!row) return;
+    var detailId = row.getAttribute('data-detail');
+    var el = window.parent.document.getElementById(detailId);
     if (!el) return;
     var aid = detailId.replace('detail_', '');
-    var arrow = document.getElementById('arrow_' + aid);
+    var arrow = window.parent.document.getElementById('arrow_' + aid);
     if (el.style.display === 'none' || el.style.display === '') {
         el.style.display = 'block';
         if (arrow) arrow.textContent = '▼';
@@ -125,9 +132,9 @@ function toggleDetail(detailId) {
         el.style.display = 'none';
         if (arrow) arrow.textContent = '▶';
     }
-}
+});
 </script>
-""", unsafe_allow_html=True)
+""", height=0)
 
 PAGE_SIZE = 20
 
@@ -499,7 +506,7 @@ def _build_card_html(group: dict, dive_result: str | None) -> str:
     return f"""
     <div class="card-meta">{meta_str}</div>
     {reason_html}
-    <div class="card-title-row" onclick="toggleDetail('{detail_id}')">
+    <div class="card-title-row" data-detail="{detail_id}">
         <span id="arrow_{aid}">{arrow}</span> {html_module.escape(title)}
     </div>
     <div id="{detail_id}" class="card-detail" style="display:{display};">
