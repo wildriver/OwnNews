@@ -1,7 +1,7 @@
 """
 Streamlit News Viewer (単一DB + Google Auth版)
 Google OAuth 認証で各ユーザを識別し、パーソナライズされたニュースフィードを提供する。
-情報的健康パネル、オンボーディング、3タブUIを含む。
+Flipboard風デザイン、可変タイルサイズ、無限スクロール対応。
 """
 
 import pandas as pd
@@ -13,22 +13,144 @@ from engine import ONBOARDING_CATEGORIES, RankingEngine
 
 st.set_page_config(page_title="OwnNews", page_icon="📰", layout="wide")
 
-# --- カスタムCSS ---
+# --- Flipboard風カスタムCSS ---
 
 st.markdown("""
 <style>
+/* === Base Theme: Deep Blue & Slate Grey === */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg, #0a1628 0%, #1a2940 50%, #0f1f35 100%);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+[data-testid="stSidebar"] {
+    background: rgba(10, 22, 40, 0.95);
+    backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(255,255,255,0.06);
+}
+
+[data-testid="stSidebar"] * {
+    color: #c8d6e5 !important;
+}
+
+/* Header */
+[data-testid="stAppViewContainer"] h1 {
+    color: #e8f0fe !important;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+[data-testid="stAppViewContainer"] h2,
+[data-testid="stAppViewContainer"] h3 {
+    color: #c8d6e5 !important;
+    font-weight: 600;
+}
+
+/* Tabs */
+[data-testid="stTabs"] button {
+    color: #8899aa !important;
+    font-weight: 500;
+    border-bottom: 2px solid transparent !important;
+    transition: all 0.2s;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #4da6ff !important;
+    border-bottom: 2px solid #4da6ff !important;
+}
+
+/* === Glassmorphism Card === */
 div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
     padding: 0 !important;
 }
-div.stButton > button {
-    font-size: 0.75rem;
-    padding: 0.15rem 0.5rem;
-    min-height: 0;
+
+/* Card container */
+div[data-testid="stContainer"] {
+    background: rgba(20, 35, 60, 0.6) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 12px !important;
+    transition: transform 0.2s, box-shadow 0.2s;
 }
+div[data-testid="stContainer"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+
+/* Buttons */
+div.stButton > button {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.6rem;
+    min-height: 0;
+    background: rgba(77, 166, 255, 0.1);
+    color: #8cb8e0 !important;
+    border: 1px solid rgba(77, 166, 255, 0.2);
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+div.stButton > button:hover {
+    background: rgba(77, 166, 255, 0.25);
+    border-color: rgba(77, 166, 255, 0.4);
+    color: #fff !important;
+}
+div.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #1a6dd4, #4da6ff);
+    color: #fff !important;
+    border: none;
+}
+
+/* Images */
 div[data-testid="stImage"] img {
-    border-radius: 6px;
+    border-radius: 8px;
     object-fit: cover;
 }
+
+/* Captions & text */
+[data-testid="stAppViewContainer"] [data-testid="stCaptionContainer"] {
+    color: #6b7f99 !important;
+}
+[data-testid="stAppViewContainer"] p,
+[data-testid="stAppViewContainer"] span,
+[data-testid="stAppViewContainer"] li {
+    color: #b0c4de !important;
+}
+[data-testid="stAppViewContainer"] a {
+    color: #4da6ff !important;
+}
+
+/* Metrics */
+[data-testid="stMetricValue"] {
+    color: #e8f0fe !important;
+}
+[data-testid="stMetricLabel"] {
+    color: #8899aa !important;
+}
+
+/* Expander */
+[data-testid="stExpander"] {
+    background: rgba(20, 35, 60, 0.4);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+}
+
+/* Info box */
+div[data-testid="stAlert"] {
+    background: rgba(77, 166, 255, 0.08);
+    border: 1px solid rgba(77, 166, 255, 0.15);
+    color: #8cb8e0 !important;
+}
+
+/* Slider */
+[data-testid="stSlider"] label {
+    color: #8899aa !important;
+}
+
+/* Divider */
+[data-testid="stAppViewContainer"] hr {
+    border-color: rgba(255,255,255,0.06) !important;
+}
+
+/* === Responsive === */
 @media (max-width: 768px) {
     div.stButton > button {
         min-height: 44px;
@@ -39,11 +161,28 @@ div[data-testid="stImage"] img {
         max-height: 150px;
     }
 }
+
+/* Compact card (no image) */
+.compact-meta {
+    color: #6b7f99;
+    font-size: 0.75rem;
+    margin-bottom: 2px;
+}
+.compact-title {
+    color: #c8d6e5;
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1.3;
+}
+.compact-reason {
+    color: #4da6ff;
+    font-size: 0.72rem;
+    opacity: 0.8;
+}
 </style>
 """, unsafe_allow_html=True)
 
-PLACEHOLDER_IMG = "https://placehold.co/400x200/e8e8e8/999?text=No+Image"
-PAGE_SIZE = 12  # 1回あたりの表示件数
+PAGE_SIZE = 20
 
 
 # --- Supabase ---
@@ -94,6 +233,18 @@ def deep_dive(title: str, summary: str) -> str:
     )
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
+
+
+# --- 画像の有無判定 ---
+
+def _has_valid_image(group: dict) -> bool:
+    """画像URLが存在し、プレースホルダーでないかを返す。"""
+    url = group.get("image_url") or ""
+    if not url:
+        return False
+    if "placehold" in url or "noimage" in url.lower():
+        return False
+    return True
 
 
 # --- ログイン画面 ---
@@ -222,6 +373,45 @@ def _clear_onboarding_state() -> None:
         st.session_state.pop(key, None)
 
 
+# --- 階層的健康分析パネル（共通） ---
+
+def render_hierarchical_health(engine: RankingEngine) -> None:
+    """中分類・小分類の詳細分析を描画する。"""
+    try:
+        hier = engine.get_hierarchical_health()
+    except Exception:
+        st.caption("詳細分析を取得できませんでした")
+        return
+
+    col_med, col_minor = st.columns(2)
+
+    with col_med:
+        med = hier["medium"]
+        if med["distribution"]:
+            med_score = med["diversity_score"]
+            st.caption(f"**中分類** 多様性: {med_score}/100")
+            df_med = pd.DataFrame(
+                list(med["distribution"].items()),
+                columns=["中分類", "件数"],
+            )
+            st.bar_chart(df_med, x="中分類", y="件数")
+        else:
+            st.caption("中分類データなし")
+
+    with col_minor:
+        minor = hier["minor"]
+        if minor["distribution"]:
+            minor_score = minor["diversity_score"]
+            st.caption(f"**小分類（キーワード）** 多様性: {minor_score}/100")
+            df_minor = pd.DataFrame(
+                list(minor["distribution"].items()),
+                columns=["キーワード", "件数"],
+            )
+            st.bar_chart(df_minor, x="キーワード", y="件数")
+        else:
+            st.caption("小分類データなし")
+
+
 # --- 情報的健康パネル（サイドバー） ---
 
 def render_info_health_panel(engine: RankingEngine) -> None:
@@ -270,27 +460,7 @@ def render_info_health_panel(engine: RankingEngine) -> None:
 
     # 階層的分析（中分類・小分類）
     with st.expander("📊 詳細分析（中分類・小分類）"):
-        try:
-            hier = engine.get_hierarchical_health()
-        except Exception:
-            st.caption("詳細分析を取得できませんでした")
-            return
-
-        med = hier["medium"]
-        if med["distribution"]:
-            med_score = med["diversity_score"]
-            st.caption(f"**中分類** 多様性: {med_score}/100")
-            top_med = list(med["distribution"].items())[:5]
-            for name, cnt in top_med:
-                st.caption(f"  {name}: {cnt}件")
-
-        minor = hier["minor"]
-        if minor["distribution"]:
-            minor_score = minor["diversity_score"]
-            st.caption(f"**小分類（キーワード）** 多様性: {minor_score}/100")
-            top_minor = list(minor["distribution"].items())[:5]
-            for name, cnt in top_minor:
-                st.caption(f"  {name}: {cnt}件")
+        render_hierarchical_health(engine)
 
 
 # --- カード描画 ---
@@ -315,12 +485,12 @@ def _do_interaction(
 
 
 def render_card(group: dict, engine: RankingEngine) -> None:
-    """記事カード（類似記事グループ対応）を描画する。"""
+    """記事カード（画像あり: フルカード / 画像なし: コンパクト）を描画する。"""
     aid = group["id"]
     related = group.get("related", [])
     all_ids = [aid] + [r["id"] for r in related]
 
-    img = group.get("image_url") or PLACEHOLDER_IMG
+    has_img = _has_valid_image(group)
     similarity = group.get("similarity", 0)
     score_pct = max(0, min(100, similarity * 100))
     title = group.get("title", "")
@@ -328,25 +498,28 @@ def render_card(group: dict, engine: RankingEngine) -> None:
     summary = group.get("summary", "")
     category = group.get("category", "")
     published = group.get("published", "")
+    reason = group.get("reason", "")
 
     # 展開状態の管理
     open_key = f"open_{aid}"
     is_open = st.session_state.get(open_key, False)
 
     with st.container(border=True):
-        st.image(img, use_container_width=True)
+        # 画像ありカード: フル表示
+        if has_img:
+            st.image(group["image_url"], use_container_width=True)
 
+        # メタ情報
         meta = []
         if published:
             meta.append(published[:16])
         if category:
             meta.append(category)
-        meta.append(f"マッチ {score_pct:.0f}%")
+        meta.append(f"{score_pct:.0f}%")
         if related:
-            meta.append(f"関連 {len(related)}件")
+            meta.append(f"+{len(related)}")
         st.caption(" ／ ".join(meta))
 
-        reason = group.get("reason", "")
         if reason:
             st.caption(f"💡 {reason}")
 
@@ -357,7 +530,6 @@ def render_card(group: dict, engine: RankingEngine) -> None:
             use_container_width=True,
         ):
             if not is_open:
-                # 初回展開時に閲覧記録（フィードは維持）
                 _do_interaction(engine, all_ids, "view", invalidate=False)
             st.session_state[open_key] = not is_open
             st.rerun()
@@ -366,14 +538,12 @@ def render_card(group: dict, engine: RankingEngine) -> None:
             if summary:
                 st.markdown(summary)
 
-            # 元記事リンク（グループ内すべて）
             st.markdown(f"🔗 [{title}]({link})")
             for rel in related:
                 rel_title = rel.get("title", "")
                 rel_link = rel.get("link", "")
                 st.markdown(f"🔗 [{rel_title}]({rel_link})")
 
-            # 深掘り結果
             dive_key = f"dive_{aid}"
             if dive_key in st.session_state:
                 st.info(st.session_state[dive_key])
@@ -481,22 +651,68 @@ def render_news_tab(engine: RankingEngine) -> None:
         _invalidate_feed()
         st.rerun()
 
-    # カードグリッド
-    for row_start in range(0, len(visible), cols_per_row):
-        cols = st.columns(cols_per_row)
-        for col_idx, col in enumerate(cols):
-            idx = row_start + col_idx
-            if idx >= len(visible):
-                break
-            with col:
-                render_card(visible[idx], engine)
+    # 可変タイルグリッド: 画像なし記事は compact_cols にまとめる
+    compact_cols = min(cols_per_row + 1, 5)  # 画像なしは1列多く
 
-    # もっと見る
+    # 画像あり / なしを分離してインターリーブ配置
+    idx = 0
+    while idx < len(visible):
+        # 1行ぶんを収集
+        row_items = visible[idx:idx + cols_per_row]
+        idx += cols_per_row
+
+        # 画像あり / なし を分ける
+        with_img = [g for g in row_items if _has_valid_image(g)]
+        without_img = [g for g in row_items if not _has_valid_image(g)]
+
+        # 画像ありを通常カラムで表示
+        if with_img:
+            cols = st.columns(max(len(with_img), 1))
+            for ci, g in enumerate(with_img):
+                with cols[ci]:
+                    render_card(g, engine)
+
+        # 画像なしをコンパクトカラムで表示
+        if without_img:
+            cols = st.columns(compact_cols)
+            for ci, g in enumerate(without_img):
+                with cols[ci % compact_cols]:
+                    render_card(g, engine)
+
+    # 無限スクロール: 残りがあれば自動読み込みトリガー
     if show_count < len(groups):
         remaining = len(groups) - show_count
-        if st.button(f"⬇ もっと見る（残り {remaining} グループ）", use_container_width=True):
+        # 見えないボタン + JavaScript で自動トリガー
+        load_more = st.button(
+            f"⬇ もっと読み込む（残り {remaining}）",
+            key="load_more_btn",
+            use_container_width=True,
+        )
+        if load_more:
             st.session_state["feed_show_count"] = show_count + PAGE_SIZE
             st.rerun()
+
+        # Intersection Observer で自動読み込み
+        st.markdown("""
+        <div id="scroll-sentinel" style="height:1px;"></div>
+        <script>
+        const sentinel = document.getElementById('scroll-sentinel');
+        if (sentinel) {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const btn = document.querySelector('button[kind="secondary"]');
+                        if (btn && btn.textContent.includes('もっと読み込む')) {
+                            btn.click();
+                            observer.disconnect();
+                        }
+                    }
+                });
+            }, { threshold: 0.1 });
+            observer.observe(sentinel);
+        }
+        </script>
+        """, unsafe_allow_html=True)
 
 
 # --- Tab 2: ダッシュボード ---
@@ -558,6 +774,12 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
             st.caption("まだ履歴データがありません（日々の利用で蓄積されます）")
     except Exception:
         st.caption("スコア履歴の取得に失敗しました")
+
+    st.divider()
+
+    # 階層的健康分析（ダッシュボード版）
+    st.subheader("📊 情報摂取の詳細分析")
+    render_hierarchical_health(engine)
 
     st.divider()
 
