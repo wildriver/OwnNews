@@ -53,6 +53,13 @@ create table if not exists health_score_history (
     primary key (user_id, score_date)
 );
 
+-- 7. 深掘り分析キャッシュ（ユーザ間共有）
+create table if not exists deep_dive_cache (
+    article_id text primary key,
+    analysis   text not null,
+    created_at timestamptz default now()
+);
+
 -- 8. 公開フィルタ（Phase 2 用）
 create table if not exists public_filters (
     filter_id      uuid primary key default gen_random_uuid(),
@@ -144,6 +151,10 @@ create policy "user_interactions_all" on user_interactions
 
 alter table health_score_history enable row level security;
 create policy "health_score_history_all" on health_score_history
+    for all using (true);
+
+alter table deep_dive_cache enable row level security;
+create policy "deep_dive_cache_all" on deep_dive_cache
     for all using (true);
 
 alter table public_filters enable row level security;

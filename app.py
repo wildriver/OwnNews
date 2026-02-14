@@ -1,8 +1,10 @@
 """
 Streamlit News Viewer (単一DB + Google Auth版)
 Google OAuth 認証で各ユーザを識別し、パーソナライズされたニュースフィードを提供する。
-Flipboard風デザイン、可変タイルサイズ、無限スクロール対応。
+CSS先読み + JS切り替えによる高速記事展開、round-robin配置による隙間なしレイアウト。
 """
+
+import html as html_module
 
 import pandas as pd
 import requests
@@ -13,144 +15,91 @@ from engine import ONBOARDING_CATEGORIES, RankingEngine
 
 st.set_page_config(page_title="OwnNews", page_icon="📰", layout="wide")
 
-# --- Flipboard風カスタムCSS ---
+# --- クリーンな白系CSS + toggleDetail JS ---
 
 st.markdown("""
 <style>
-/* === Base Theme: Deep Blue & Slate Grey === */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 [data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #0a1628 0%, #1a2940 50%, #0f1f35 100%);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-[data-testid="stSidebar"] {
-    background: rgba(10, 22, 40, 0.95);
-    backdrop-filter: blur(20px);
-    border-right: 1px solid rgba(255,255,255,0.06);
+/* タイトな列間隔 */
+[data-testid="stHorizontalBlock"] {
+    gap: 8px !important;
 }
 
-[data-testid="stSidebar"] * {
-    color: #c8d6e5 !important;
-}
-
-/* Header */
-[data-testid="stAppViewContainer"] h1 {
-    color: #e8f0fe !important;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-}
-[data-testid="stAppViewContainer"] h2,
-[data-testid="stAppViewContainer"] h3 {
-    color: #c8d6e5 !important;
-    font-weight: 600;
-}
-
-/* Tabs */
-[data-testid="stTabs"] button {
-    color: #8899aa !important;
-    font-weight: 500;
-    border-bottom: 2px solid transparent !important;
-    transition: all 0.2s;
-}
-[data-testid="stTabs"] button[aria-selected="true"] {
-    color: #4da6ff !important;
-    border-bottom: 2px solid #4da6ff !important;
-}
-
-/* === Glassmorphism Card === */
-div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlock"] {
-    padding: 0 !important;
-}
-
-/* Card container */
+/* カード */
 div[data-testid="stContainer"] {
-    background: rgba(20, 35, 60, 0.6) !important;
-    backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-    border-radius: 12px !important;
-    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid #e8e8e8 !important;
+    border-radius: 10px !important;
+    transition: box-shadow 0.15s;
 }
 div[data-testid="stContainer"]:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
 }
 
-/* Buttons */
+/* ボタン */
 div.stButton > button {
     font-size: 0.8rem;
     padding: 0.3rem 0.6rem;
     min-height: 0;
-    background: rgba(77, 166, 255, 0.1);
-    color: #8cb8e0 !important;
-    border: 1px solid rgba(77, 166, 255, 0.2);
-    border-radius: 8px;
-    transition: all 0.2s;
-}
-div.stButton > button:hover {
-    background: rgba(77, 166, 255, 0.25);
-    border-color: rgba(77, 166, 255, 0.4);
-    color: #fff !important;
-}
-div.stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #1a6dd4, #4da6ff);
-    color: #fff !important;
-    border: none;
+    border-radius: 6px;
 }
 
-/* Images */
+/* 画像 */
 div[data-testid="stImage"] img {
-    border-radius: 8px;
+    border-radius: 6px;
     object-fit: cover;
 }
 
-/* Captions & text */
-[data-testid="stAppViewContainer"] [data-testid="stCaptionContainer"] {
-    color: #6b7f99 !important;
+/* カード内タイトル */
+.card-title-row {
+    cursor: pointer;
+    padding: 4px 0;
+    font-weight: 500;
+    font-size: 0.92rem;
+    color: #1a1a1a;
+    line-height: 1.35;
+    user-select: none;
 }
-[data-testid="stAppViewContainer"] p,
-[data-testid="stAppViewContainer"] span,
-[data-testid="stAppViewContainer"] li {
-    color: #b0c4de !important;
+.card-title-row:hover {
+    color: #1a73e8;
 }
-[data-testid="stAppViewContainer"] a {
-    color: #4da6ff !important;
+.card-meta {
+    font-size: 0.75rem;
+    color: #888;
+    margin-bottom: 2px;
 }
-
-/* Metrics */
-[data-testid="stMetricValue"] {
-    color: #e8f0fe !important;
+.card-reason {
+    font-size: 0.72rem;
+    color: #1a73e8;
+    margin: 1px 0 3px;
 }
-[data-testid="stMetricLabel"] {
-    color: #8899aa !important;
+.card-detail {
+    font-size: 0.88rem;
+    color: #333;
+    line-height: 1.5;
 }
-
-/* Expander */
-[data-testid="stExpander"] {
-    background: rgba(20, 35, 60, 0.4);
-    border: 1px solid rgba(255,255,255,0.06);
+.card-detail a {
+    color: #1a73e8;
+    text-decoration: none;
+}
+.card-detail a:hover {
+    text-decoration: underline;
+}
+.card-dive-result {
+    background: #e8f4fd;
     border-radius: 8px;
+    padding: 10px 12px;
+    margin: 8px 0 4px;
+    font-size: 0.85rem;
+    color: #333;
+    line-height: 1.5;
 }
 
-/* Info box */
-div[data-testid="stAlert"] {
-    background: rgba(77, 166, 255, 0.08);
-    border: 1px solid rgba(77, 166, 255, 0.15);
-    color: #8cb8e0 !important;
-}
-
-/* Slider */
-[data-testid="stSlider"] label {
-    color: #8899aa !important;
-}
-
-/* Divider */
-[data-testid="stAppViewContainer"] hr {
-    border-color: rgba(255,255,255,0.06) !important;
-}
-
-/* === Responsive === */
+/* レスポンシブ */
 @media (max-width: 768px) {
     div.stButton > button {
         min-height: 44px;
@@ -161,25 +110,23 @@ div[data-testid="stAlert"] {
         max-height: 150px;
     }
 }
-
-/* Compact card (no image) */
-.compact-meta {
-    color: #6b7f99;
-    font-size: 0.75rem;
-    margin-bottom: 2px;
-}
-.compact-title {
-    color: #c8d6e5;
-    font-size: 0.9rem;
-    font-weight: 500;
-    line-height: 1.3;
-}
-.compact-reason {
-    color: #4da6ff;
-    font-size: 0.72rem;
-    opacity: 0.8;
-}
 </style>
+
+<script>
+function toggleDetail(detailId) {
+    var el = document.getElementById(detailId);
+    if (!el) return;
+    var aid = detailId.replace('detail_', '');
+    var arrow = document.getElementById('arrow_' + aid);
+    if (el.style.display === 'none' || el.style.display === '') {
+        el.style.display = 'block';
+        if (arrow) arrow.textContent = '▼';
+    } else {
+        el.style.display = 'none';
+        if (arrow) arrow.textContent = '▶';
+    }
+}
+</script>
 """, unsafe_allow_html=True)
 
 PAGE_SIZE = 20
@@ -484,81 +431,116 @@ def _do_interaction(
         st.error(f"記録に失敗しました: {e}")
 
 
-def render_card(group: dict, engine: RankingEngine) -> None:
-    """記事カード（画像あり: フルカード / 画像なし: コンパクト）を描画する。"""
+def _build_card_html(group: dict, dive_result: str | None) -> str:
+    """カードのHTML（メタ・タイトル・詳細）を構築する。rerun不要の即時展開用。"""
     aid = group["id"]
     related = group.get("related", [])
-    all_ids = [aid] + [r["id"] for r in related]
-
-    has_img = _has_valid_image(group)
-    similarity = group.get("similarity", 0)
-    score_pct = max(0, min(100, similarity * 100))
     title = group.get("title", "")
     link = group.get("link", "")
-    summary = group.get("summary", "")
+    summary = group.get("summary", "") or ""
     category = group.get("category", "")
     published = group.get("published", "")
     reason = group.get("reason", "")
+    similarity = group.get("similarity", 0)
+    score_pct = max(0, min(100, similarity * 100))
 
-    # 展開状態の管理
-    open_key = f"open_{aid}"
-    is_open = st.session_state.get(open_key, False)
+    detail_id = f"detail_{aid}"
+    # 深掘り結果がある場合は最初から開いた状態にする
+    force_open = dive_result is not None
+    display = "block" if force_open else "none"
+    arrow = "▼" if force_open else "▶"
+
+    # メタ情報
+    meta = []
+    if published:
+        meta.append(html_module.escape(published[:16]))
+    if category:
+        meta.append(html_module.escape(category))
+    meta.append(f"{score_pct:.0f}%")
+    if related:
+        meta.append(f"+{len(related)}")
+    meta_str = " ／ ".join(meta)
+
+    # 推薦理由
+    reason_html = ""
+    if reason:
+        reason_html = (
+            f'<div class="card-reason">'
+            f'💡 {html_module.escape(reason)}</div>'
+        )
+
+    # 詳細コンテンツ
+    detail_parts = []
+    if summary:
+        detail_parts.append(
+            f'<p style="margin:6px 0;">{html_module.escape(summary)}</p>'
+        )
+    detail_parts.append(
+        f'<p>🔗 <a href="{html_module.escape(link)}" target="_blank">'
+        f'{html_module.escape(title)}</a></p>'
+    )
+    for rel in related:
+        rt = html_module.escape(rel.get("title", ""))
+        rl = html_module.escape(rel.get("link", ""))
+        detail_parts.append(
+            f'<p>🔗 <a href="{rl}" target="_blank">{rt}</a></p>'
+        )
+
+    # 深掘り結果
+    dive_html = ""
+    if dive_result:
+        dive_html = (
+            f'<div class="card-dive-result">'
+            f'{html_module.escape(dive_result)}</div>'
+        )
+
+    detail_content = "\n".join(detail_parts) + dive_html
+
+    return f"""
+    <div class="card-meta">{meta_str}</div>
+    {reason_html}
+    <div class="card-title-row" onclick="toggleDetail('{detail_id}')">
+        <span id="arrow_{aid}">{arrow}</span> {html_module.escape(title)}
+    </div>
+    <div id="{detail_id}" class="card-detail" style="display:{display};">
+        {detail_content}
+    </div>
+    """
+
+
+@st.fragment
+def render_card(group: dict, engine: RankingEngine) -> None:
+    """記事カードを描画する。タイトル展開はJS即時、深掘り/除外はStreamlit。"""
+    aid = group["id"]
+    related = group.get("related", [])
+    all_ids = [aid] + [r["id"] for r in related]
+    title = group.get("title", "")
+    summary = group.get("summary", "") or ""
+
+    dive_key = f"dive_{aid}"
+    dive_result = st.session_state.get(dive_key)
 
     with st.container(border=True):
-        # 画像ありカード: フル表示
-        if has_img:
+        # 画像（あれば）
+        if _has_valid_image(group):
             st.image(group["image_url"], use_container_width=True)
 
-        # メタ情報
-        meta = []
-        if published:
-            meta.append(published[:16])
-        if category:
-            meta.append(category)
-        meta.append(f"{score_pct:.0f}%")
-        if related:
-            meta.append(f"+{len(related)}")
-        st.caption(" ／ ".join(meta))
+        # カード本体をHTMLで先読みレンダリング
+        card_html = _build_card_html(group, dive_result)
+        st.markdown(card_html, unsafe_allow_html=True)
 
-        if reason:
-            st.caption(f"💡 {reason}")
-
-        # タイトルクリックで展開 + 閲覧記録（フィード維持）
-        if st.button(
-            f"{'▼' if is_open else '▶'} {title}",
-            key=f"toggle_{aid}",
-            use_container_width=True,
-        ):
-            if not is_open:
-                _do_interaction(engine, all_ids, "view", invalidate=False)
-            st.session_state[open_key] = not is_open
-            st.rerun()
-
-        if is_open:
-            if summary:
-                st.markdown(summary)
-
-            st.markdown(f"🔗 [{title}]({link})")
-            for rel in related:
-                rel_title = rel.get("title", "")
-                rel_link = rel.get("link", "")
-                st.markdown(f"🔗 [{rel_title}]({rel_link})")
-
-            dive_key = f"dive_{aid}"
-            if dive_key in st.session_state:
-                st.info(st.session_state[dive_key])
-
+        # インタラクションボタン（Streamlit — サーバー通信が必要）
         c1, c2 = st.columns(2)
         with c1:
             if st.button("🔍 深掘り", key=f"d_{aid}"):
                 _do_interaction(engine, all_ids, "deep_dive", invalidate=False)
-                try:
-                    analysis = deep_dive(title, summary)
-                except Exception as e:
-                    analysis = f"分析失敗: {e}"
-                st.session_state[f"dive_{aid}"] = analysis
-                st.session_state[open_key] = True
-                st.rerun()
+                with st.spinner("分析中..."):
+                    try:
+                        analysis = deep_dive(title, summary)
+                    except Exception as e:
+                        analysis = f"分析失敗: {e}"
+                st.session_state[dive_key] = analysis
+                st.rerun(scope="fragment")
         with c2:
             if st.button("👎 除外", key=f"x_{aid}"):
                 _do_interaction(engine, all_ids, "not_interested", invalidate=True)
@@ -595,12 +577,12 @@ def render_news_tab(engine: RankingEngine) -> None:
             help="1.0=パーソナライズ強 / 0.0=多様性重視",
         )
         cols_per_row = st.slider(
-            "カードサイズ",
+            "カラム数",
             min_value=1,
-            max_value=5,
-            value=3,
+            max_value=6,
+            value=4,
             step=1,
-            help="1=大 / 5=小（1行あたりの列数）",
+            help="1行あたりの列数（大画面では多く設定）",
         )
 
         st.divider()
@@ -651,38 +633,15 @@ def render_news_tab(engine: RankingEngine) -> None:
         _invalidate_feed()
         st.rerun()
 
-    # 可変タイルグリッド: 画像なし記事は compact_cols にまとめる
-    compact_cols = min(cols_per_row + 1, 5)  # 画像なしは1列多く
-
-    # 画像あり / なしを分離してインターリーブ配置
-    idx = 0
-    while idx < len(visible):
-        # 1行ぶんを収集
-        row_items = visible[idx:idx + cols_per_row]
-        idx += cols_per_row
-
-        # 画像あり / なし を分ける
-        with_img = [g for g in row_items if _has_valid_image(g)]
-        without_img = [g for g in row_items if not _has_valid_image(g)]
-
-        # 画像ありを通常カラムで表示
-        if with_img:
-            cols = st.columns(max(len(with_img), 1))
-            for ci, g in enumerate(with_img):
-                with cols[ci]:
-                    render_card(g, engine)
-
-        # 画像なしをコンパクトカラムで表示
-        if without_img:
-            cols = st.columns(compact_cols)
-            for ci, g in enumerate(without_img):
-                with cols[ci % compact_cols]:
-                    render_card(g, engine)
+    # Round-robin配置: カードを各列に均等分配（マソンリー風レイアウト）
+    cols = st.columns(cols_per_row)
+    for i, group in enumerate(visible):
+        with cols[i % cols_per_row]:
+            render_card(group, engine)
 
     # 無限スクロール: 残りがあれば自動読み込みトリガー
     if show_count < len(groups):
         remaining = len(groups) - show_count
-        # 見えないボタン + JavaScript で自動トリガー
         load_more = st.button(
             f"⬇ もっと読み込む（残り {remaining}）",
             key="load_more_btn",
