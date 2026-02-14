@@ -261,7 +261,8 @@ def render_info_health_panel(engine: RankingEngine) -> None:
 
 # --- カード描画 ---
 
-def render_card(article: dict, index: int, engine: RankingEngine) -> None:
+def render_card(article: dict, engine: RankingEngine) -> None:
+    aid = article["id"]
     img = article.get("image_url") or PLACEHOLDER_IMG
     similarity = article.get("similarity", 0)
     score_pct = max(0, min(100, similarity * 100))
@@ -286,19 +287,34 @@ def render_card(article: dict, index: int, engine: RankingEngine) -> None:
 
         c1, c2, c3 = st.columns(3)
         with c1:
-            if st.button("👁", key=f"r_{index}", help="閲覧として記録"):
-                engine.record_view(article["id"])
+            if st.button("👁", key=f"r_{aid}", help="閲覧として記録"):
+                engine.record_view(aid)
                 st.toast(f"「{title[:15]}…」を記録")
+                _invalidate_feed()
                 st.rerun()
         with c2:
-            if st.button("🔍", key=f"d_{index}", help="深掘り分析"):
-                engine.record_deep_dive(article["id"])
+            if st.button("🔍", key=f"d_{aid}", help="深掘り分析"):
+                engine.record_deep_dive(aid)
+                try:
+                    analysis = deep_dive(title, article.get("summary", ""))
+                except Exception as e:
+                    analysis = f"分析失敗: {e}"
+                st.session_state["dive_result"] = {
+                    "title": title, "analysis": analysis,
+                }
+                _invalidate_feed()
                 st.rerun()
         with c3:
-            if st.button("👎", key=f"x_{index}", help="興味なし"):
-                engine.record_not_interested(article["id"])
+            if st.button("👎", key=f"x_{aid}", help="興味なし"):
+                engine.record_not_interested(aid)
                 st.toast(f"「{title[:15]}…」を除外")
+                _invalidate_feed()
                 st.rerun()
+
+
+def _invalidate_feed() -> None:
+    """フィード記事のキャッシュをクリアして再取得させる。"""
+    st.session_state.pop("feed_articles", None)
 
 
 # --- Tab 1: ニュースフィード ---
@@ -333,16 +349,22 @@ def render_news_tab(engine: RankingEngine) -> None:
         dive = st.session_state.pop("dive_result")
         st.info(f"🔍 **{dive['title']}**\n\n{dive['analysis']}")
 
-    # 記事取得
-    try:
-        articles = engine.rank(
-            filter_strength=filter_strength, top_n=top_n + 30
-        )
-    except Exception as e:
-        st.error(f"記事の取得に失敗しました: {e}")
-        return
+    # 記事取得（セッションにキャッシュして rerun 間で安定させる）
+    cache_key = f"feed_{filter_strength:.2f}_{top_n}"
+    if "feed_articles" not in st.session_state or st.session_state.get("feed_cache_key") != cache_key:
+        try:
+            raw = engine.rank(
+                filter_strength=filter_strength, top_n=top_n + 30
+            )
+        except Exception as e:
+            st.error(f"記事の取得に失敗しました: {e}")
+            return
+        st.session_state["feed_articles"] = raw
+        st.session_state["feed_cache_key"] = cache_key
 
-    if not articles:
+    all_articles = st.session_state["feed_articles"]
+
+    if not all_articles:
         st.info("記事がまだありません。GitHub Actions による収集をお待ちください。")
         return
 
@@ -350,7 +372,7 @@ def render_news_tab(engine: RankingEngine) -> None:
     interacted_ids = engine.get_interacted_ids(
         ["view", "deep_dive", "not_interested"]
     )
-    articles = [a for a in articles if a["id"] not in interacted_ids]
+    articles = [a for a in all_articles if a["id"] not in interacted_ids]
     articles = articles[:top_n]
 
     if not articles:
@@ -359,24 +381,9 @@ def render_news_tab(engine: RankingEngine) -> None:
 
     st.caption(f"{len(articles)} 件（未読） ／ フィルタ: {filter_strength:.2f}")
 
-    # 深掘りの処理
-    for i, article in enumerate(articles):
-        if st.session_state.get(f"_dive_pending_{i}"):
-            del st.session_state[f"_dive_pending_{i}"]
-            try:
-                analysis = deep_dive(
-                    article["title"], article.get("summary", "")
-                )
-                st.session_state["dive_result"] = {
-                    "title": article["title"],
-                    "analysis": analysis,
-                }
-            except Exception as e:
-                st.session_state["dive_result"] = {
-                    "title": article["title"],
-                    "analysis": f"分析失敗: {e}",
-                }
-            st.rerun()
+    if st.button("🔄 記事を更新"):
+        _invalidate_feed()
+        st.rerun()
 
     # カードグリッド
     for row_start in range(0, len(articles), COLS_PER_ROW):
@@ -386,7 +393,7 @@ def render_news_tab(engine: RankingEngine) -> None:
             if idx >= len(articles):
                 break
             with col:
-                render_card(articles[idx], idx, engine)
+                render_card(articles[idx], engine)
 
 
 # --- Tab 2: ダッシュボード ---
