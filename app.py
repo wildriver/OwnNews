@@ -348,7 +348,8 @@ def render_hierarchical_health(engine: RankingEngine) -> None:
                 list(med["distribution"].items()),
                 columns=["中分類", "件数"],
             )
-            st.bar_chart(df_med, x="中分類", y="件数")
+            if len(df_med):
+                st.bar_chart(df_med, x="中分類", y="件数")
         else:
             st.caption("中分類データなし")
 
@@ -361,7 +362,8 @@ def render_hierarchical_health(engine: RankingEngine) -> None:
                 list(minor["distribution"].items()),
                 columns=["キーワード", "件数"],
             )
-            st.bar_chart(df_minor, x="キーワード", y="件数")
+            if len(df_minor):
+                st.bar_chart(df_minor, x="キーワード", y="件数")
         else:
             st.caption("小分類データなし")
 
@@ -399,7 +401,8 @@ def render_info_health_panel(engine: RankingEngine) -> None:
             list(dist.items()),
             columns=["カテゴリ", "件数"],
         ).sort_values("件数", ascending=True)
-        st.bar_chart(df, x="カテゴリ", y="件数", horizontal=True)
+        if len(df):
+            st.bar_chart(df, x="カテゴリ", y="件数", horizontal=True)
 
     if health["dominant_category"]:
         ratio_pct = int(health["dominant_ratio"] * 100)
@@ -711,7 +714,8 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
                 list(cat_counts.items()),
                 columns=["カテゴリ", "件数"],
             ).sort_values("件数", ascending=False)
-            st.bar_chart(df_cat, x="カテゴリ", y="件数")
+            if len(df_cat):
+                st.bar_chart(df_cat, x="カテゴリ", y="件数")
         else:
             st.caption("まだ閲覧データがありません")
 
@@ -724,7 +728,8 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
                 columns=["日付", "件数"],
             ).sort_values("日付")
             df_daily = df_daily.tail(14)
-            st.line_chart(df_daily, x="日付", y="件数")
+            if len(df_daily):
+                st.line_chart(df_daily, x="日付", y="件数")
         else:
             st.caption("まだ収集データがありません")
 
@@ -740,7 +745,8 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
                 "score_date": "日付",
                 "diversity": "多様性スコア",
             })
-            st.line_chart(df_health, x="日付", y="多様性スコア")
+            if len(df_health):
+                st.line_chart(df_health, x="日付", y="多様性スコア")
         else:
             st.caption("まだ履歴データがありません（日々の利用で蓄積されます）")
     except Exception:
@@ -841,7 +847,8 @@ def render_filter_tab(engine: RankingEngine) -> None:
                 list(dist.items()),
                 columns=["カテゴリ", "件数"],
             ).sort_values("件数", ascending=False)
-            st.bar_chart(df, x="カテゴリ", y="件数")
+            if len(df):
+                st.bar_chart(df, x="カテゴリ", y="件数")
 
 
 # --- メインUI ---
