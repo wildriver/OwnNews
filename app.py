@@ -1,8 +1,9 @@
 """
-Streamlit News Viewer (Cloud版 / Card Layout)
-カードタイル型のニュース閲覧UIと、Groqによる深掘り機能を備える。
+Streamlit News Viewer (Cloud版 / Card Layout + Dashboard)
+タブ形式UIでニュース閲覧とダッシュボードを提供する。
 """
 
+import pandas as pd
 import requests
 import streamlit as st
 from supabase import create_client
@@ -111,7 +112,6 @@ def render_card(article: dict, index: int, engine: RankingEngine) -> None:
         # メタ情報
         meta = []
         if published:
-            # 日付部分だけ抽出（長い形式を短縮）
             meta.append(published[:16])
         if category:
             meta.append(category)
@@ -136,13 +136,10 @@ def render_card(article: dict, index: int, engine: RankingEngine) -> None:
                 st.rerun()
 
 
-# --- メインUI ---
+# --- Tab 1: ニュースフィード ---
 
-def main() -> None:
-    st.title("📰 OwnNews")
-
-    engine = get_engine()
-
+def render_news_tab(engine: RankingEngine) -> None:
+    """ニュースフィードタブを描画する。"""
     # --- サイドバー ---
     with st.sidebar:
         st.header("設定")
@@ -156,7 +153,7 @@ def main() -> None:
         )
         top_n = st.slider("表示件数", 6, 60, 30, step=3)
 
-    # --- 深掘り結果の表示（セッションステートに保存） ---
+    # --- 深掘り結果の表示 ---
     if "dive_result" in st.session_state:
         dive = st.session_state.pop("dive_result")
         st.info(f"🔍 **{dive['title']}**\n\n{dive['analysis']}")
@@ -164,7 +161,7 @@ def main() -> None:
     # --- 記事取得 ---
     try:
         articles = engine.rank(
-            filter_strength=filter_strength, top_n=top_n
+            filter_strength=filter_strength, top_n=top_n + 30
         )
     except Exception as e:
         st.error(f"記事の取得に失敗しました: {e}")
@@ -174,7 +171,18 @@ def main() -> None:
         st.info("記事がまだありません。GitHub Actions による収集をお待ちください。")
         return
 
-    st.caption(f"{len(articles)} 件 ／ フィルタ: {filter_strength:.2f}")
+    # --- 既読・除外済み記事をフィルタ ---
+    interacted_ids = engine.get_interacted_ids(
+        ["view", "deep_dive", "not_interested"]
+    )
+    articles = [a for a in articles if a["id"] not in interacted_ids]
+    articles = articles[:top_n]
+
+    if not articles:
+        st.info("未読の記事がありません。次回の収集をお待ちください。")
+        return
+
+    st.caption(f"{len(articles)} 件（未読） ／ フィルタ: {filter_strength:.2f}")
 
     # --- 深掘りの処理（rerun前にセッションに保存） ---
     for i, article in enumerate(articles):
@@ -204,6 +212,130 @@ def main() -> None:
                 break
             with col:
                 render_card(articles[idx], idx, engine)
+
+
+# --- Tab 2: ダッシュボード ---
+
+def render_dashboard_tab(engine: RankingEngine) -> None:
+    """ダッシュボードタブを描画する。"""
+    try:
+        stats = engine.get_stats()
+    except Exception as e:
+        st.error(f"統計情報の取得に失敗しました: {e}")
+        return
+
+    # ===== 上段: 統計エリア =====
+    st.subheader("統計")
+    col_metrics, col_category, col_daily = st.columns(3)
+
+    # --- メトリクス ---
+    with col_metrics:
+        st.metric("総記事数", f"{stats['total_articles']:,}")
+        st.metric("閲覧済み", f"{stats['view_count']:,}")
+        st.metric("興味なし", f"{stats['not_interested_count']:,}")
+
+    # --- カテゴリ別閲覧数 ---
+    with col_category:
+        st.caption("カテゴリ別 閲覧数")
+        cat_counts = stats.get("category_counts", {})
+        if cat_counts:
+            df_cat = pd.DataFrame(
+                list(cat_counts.items()),
+                columns=["カテゴリ", "件数"],
+            ).sort_values("件数", ascending=False)
+            st.bar_chart(df_cat, x="カテゴリ", y="件数")
+        else:
+            st.caption("まだ閲覧データがありません")
+
+    # --- 日別収集数 ---
+    with col_daily:
+        st.caption("日別 記事収集数")
+        daily_counts = stats.get("daily_counts", {})
+        if daily_counts:
+            df_daily = pd.DataFrame(
+                list(daily_counts.items()),
+                columns=["日付", "件数"],
+            ).sort_values("日付")
+            # 直近14日に絞る
+            df_daily = df_daily.tail(14)
+            st.line_chart(df_daily, x="日付", y="件数")
+        else:
+            st.caption("まだ収集データがありません")
+
+    st.divider()
+
+    # ===== 下段: 閲覧履歴 =====
+    st.subheader("履歴")
+    col_viewed, col_disliked = st.columns(2)
+
+    # --- 閲覧済み ---
+    with col_viewed:
+        st.markdown("**👁 閲覧した記事**")
+        viewed = engine.get_interaction_history(
+            ["view", "deep_dive"], limit=50
+        )
+        if viewed:
+            for item in viewed:
+                title = item["title"]
+                link = item["link"]
+                cat = item.get("category", "")
+                ts = item["created_at"][:16] if item.get("created_at") else ""
+                badge = "🔍" if item["interaction_type"] == "deep_dive" else "👁"
+                st.markdown(
+                    f"{badge} **[{title}]({link})**"
+                    if link else f"{badge} **{title}**"
+                )
+                meta = []
+                if ts:
+                    meta.append(ts)
+                if cat:
+                    meta.append(cat)
+                if meta:
+                    st.caption(" ／ ".join(meta))
+        else:
+            st.caption("まだ閲覧履歴がありません")
+
+    # --- 興味なし ---
+    with col_disliked:
+        st.markdown("**👎 興味なしにした記事**")
+        disliked = engine.get_interaction_history(
+            ["not_interested"], limit=50
+        )
+        if disliked:
+            for item in disliked:
+                title = item["title"]
+                link = item["link"]
+                cat = item.get("category", "")
+                ts = item["created_at"][:16] if item.get("created_at") else ""
+                st.markdown(
+                    f"**[{title}]({link})**"
+                    if link else f"**{title}**"
+                )
+                meta = []
+                if ts:
+                    meta.append(ts)
+                if cat:
+                    meta.append(cat)
+                if meta:
+                    st.caption(" ／ ".join(meta))
+        else:
+            st.caption("まだデータがありません")
+
+
+# --- メインUI ---
+
+def main() -> None:
+    st.title("📰 OwnNews")
+
+    engine = get_engine()
+
+    tab_news, tab_dashboard = st.tabs(["ニュース", "ダッシュボード"])
+
+    with tab_news:
+        render_news_tab(engine)
+
+    with tab_dashboard:
+        render_dashboard_tab(engine)
 
 
 if __name__ == "__main__":

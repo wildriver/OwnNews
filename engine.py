@@ -5,6 +5,7 @@ Embeddingは収集時にDB保存済みのため、閲覧時にEmbedding APIは�
 """
 
 import json
+from collections import Counter
 
 import numpy as np
 from supabase import Client
@@ -123,6 +124,150 @@ class RankingEngine:
             r["similarity"] = 0.0
         return resp.data
 
+    # --- インタラクション記録 ---
+
+    def _record_interaction(
+        self, article_id: str, interaction_type: str
+    ) -> None:
+        """ユーザーの操作をuser_interactionsテーブルに記録する。"""
+        self.sb.table("user_interactions").upsert(
+            {
+                "user_id": self.user_id,
+                "article_id": article_id,
+                "interaction_type": interaction_type,
+            },
+            on_conflict="user_id,article_id,interaction_type",
+        ).execute()
+
+    def get_interacted_ids(
+        self, interaction_types: list[str] | None = None
+    ) -> set[str]:
+        """指定タイプのインタラクション済み article_id を返す。"""
+        query = (
+            self.sb.table("user_interactions")
+            .select("article_id")
+            .eq("user_id", self.user_id)
+        )
+        if interaction_types:
+            query = query.in_("interaction_type", interaction_types)
+        resp = query.execute()
+        return {r["article_id"] for r in resp.data}
+
+    def get_interaction_history(
+        self, interaction_types: list[str], limit: int = 50
+    ) -> list[dict]:
+        """インタラクション履歴を記事情報付きで返す。"""
+        resp = (
+            self.sb.table("user_interactions")
+            .select("article_id, interaction_type, created_at")
+            .eq("user_id", self.user_id)
+            .in_("interaction_type", interaction_types)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        if not resp.data:
+            return []
+
+        # 記事情報を一括取得
+        article_ids = list({r["article_id"] for r in resp.data})
+        articles_resp = (
+            self.sb.table("articles")
+            .select("id, title, link, category, published, image_url")
+            .in_("id", article_ids)
+            .execute()
+        )
+        article_map = {a["id"]: a for a in articles_resp.data}
+
+        result = []
+        for r in resp.data:
+            article = article_map.get(r["article_id"], {})
+            result.append({
+                "article_id": r["article_id"],
+                "interaction_type": r["interaction_type"],
+                "created_at": r["created_at"],
+                "title": article.get("title", "(削除済み)"),
+                "link": article.get("link", ""),
+                "category": article.get("category", ""),
+                "published": article.get("published", ""),
+                "image_url": article.get("image_url", ""),
+            })
+        return result
+
+    def get_stats(self) -> dict:
+        """ダッシュボード用の統計情報を返す。"""
+        # 総記事数
+        total_resp = (
+            self.sb.table("articles")
+            .select("id", count="exact")
+            .execute()
+        )
+        total_articles = total_resp.count or 0
+
+        # インタラクション一覧
+        interactions_resp = (
+            self.sb.table("user_interactions")
+            .select("article_id, interaction_type")
+            .eq("user_id", self.user_id)
+            .execute()
+        )
+        interactions = interactions_resp.data or []
+        view_count = sum(
+            1 for i in interactions
+            if i["interaction_type"] in ("view", "deep_dive")
+        )
+        not_interested_count = sum(
+            1 for i in interactions
+            if i["interaction_type"] == "not_interested"
+        )
+
+        # カテゴリ別閲覧数（閲覧した記事のカテゴリを集計）
+        viewed_ids = [
+            i["article_id"] for i in interactions
+            if i["interaction_type"] in ("view", "deep_dive")
+        ]
+        category_counts: dict[str, int] = {}
+        if viewed_ids:
+            cat_resp = (
+                self.sb.table("articles")
+                .select("category")
+                .in_("id", viewed_ids)
+                .execute()
+            )
+            cats = [
+                r["category"] for r in cat_resp.data
+                if r.get("category")
+            ]
+            # カテゴリはカンマ区切りの場合があるので分割
+            all_cats = []
+            for c in cats:
+                all_cats.extend(
+                    t.strip() for t in c.split(",") if t.strip()
+                )
+            category_counts = dict(Counter(all_cats))
+
+        # 日別収集数（直近14日）
+        daily_resp = (
+            self.sb.table("articles")
+            .select("collected_at")
+            .order("collected_at", desc=True)
+            .limit(2000)
+            .execute()
+        )
+        daily_counts: dict[str, int] = {}
+        for r in daily_resp.data:
+            if r.get("collected_at"):
+                day = r["collected_at"][:10]  # YYYY-MM-DD
+                daily_counts[day] = daily_counts.get(day, 0) + 1
+
+        return {
+            "total_articles": total_articles,
+            "view_count": view_count,
+            "not_interested_count": not_interested_count,
+            "category_counts": category_counts,
+            "daily_counts": daily_counts,
+        }
+
     # --- フィードバック ---
 
     def _get_article_embedding(self, article_id: str) -> np.ndarray | None:
@@ -141,14 +286,17 @@ class RankingEngine:
 
     def record_view(self, article_id: str) -> None:
         """記事を閲覧した: 弱い正のフィードバック (α=0.03)"""
+        self._record_interaction(article_id, "view")
         self._apply_feedback(article_id, alpha=0.03)
 
     def record_deep_dive(self, article_id: str) -> None:
         """深掘りボタンを押した: 強い正のフィードバック (α=0.15)"""
+        self._record_interaction(article_id, "deep_dive")
         self._apply_feedback(article_id, alpha=0.15)
 
     def record_not_interested(self, article_id: str) -> None:
         """興味なしボタンを押した: 強い負のフィードバック (α=-0.2)"""
+        self._record_interaction(article_id, "not_interested")
         self._apply_feedback(article_id, alpha=-0.2)
 
     def _apply_feedback(self, article_id: str, alpha: float) -> None:

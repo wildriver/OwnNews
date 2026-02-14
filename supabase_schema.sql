@@ -78,3 +78,12 @@ as $$
     order by random()
     limit pick_count;
 $$;
+
+-- 7. ユーザーインタラクション履歴テーブル
+create table if not exists user_interactions (
+    user_id          text not null default 'default',
+    article_id       text not null,
+    interaction_type text not null,  -- 'view', 'deep_dive', 'not_interested'
+    created_at       timestamptz default now(),
+    primary key (user_id, article_id, interaction_type)
+);
