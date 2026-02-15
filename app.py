@@ -760,6 +760,52 @@ def render_dashboard_tab(engine: RankingEngine) -> None:
 
     st.divider()
 
+    # フィルタバブル分析
+    st.subheader("🫧 フィルタバブル分析")
+    try:
+        bubble = engine.get_bubble_analysis()
+        if bubble["user_viewed"] > 0:
+            st.metric(
+                "バブル度",
+                f"{bubble['bubble_score']:.0f} / 100",
+                help="0 = 世の中と同じ分布 ／ 高い = 偏りが大きい",
+            )
+
+            df_bubble = pd.DataFrame(bubble["comparison"])
+            if len(df_bubble):
+                df_bubble = df_bubble.rename(columns={
+                    "category": "カテゴリ",
+                    "world_pct": "世の中 (%)",
+                    "user_pct": "あなた (%)",
+                })
+                st.bar_chart(
+                    df_bubble,
+                    x="カテゴリ",
+                    y=["世の中 (%)", "あなた (%)"],
+                )
+
+            over = [c for c in bubble["comparison"] if c["gap"] > 10]
+            under = [c for c in bubble["comparison"] if c["gap"] < -10]
+            if over:
+                st.warning(
+                    f"📈 過剰摂取: {', '.join(c['category'] for c in over)}"
+                )
+            if under:
+                st.info(
+                    f"📉 見落とし: {', '.join(c['category'] for c in under)}"
+                )
+
+            st.caption(
+                f"全記事 {bubble['total_articles']:,} 件 ／ "
+                f"あなたの閲覧 {bubble['user_viewed']:,} 件"
+            )
+        else:
+            st.caption("記事を閲覧するとフィルタバブル分析が表示されます。")
+    except Exception:
+        st.caption("フィルタバブル分析の取得に失敗しました")
+
+    st.divider()
+
     st.subheader("履歴")
     col_viewed, col_disliked = st.columns(2)
 

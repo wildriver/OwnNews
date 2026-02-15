@@ -13,7 +13,7 @@ from datetime import date
 import numpy as np
 from supabase import Client
 
-from categories import CATEGORY_TAXONOMY, classify_medium, extract_minor_keywords
+from categories import CATEGORY_TAXONOMY, classify_medium, extract_keywords
 
 
 def _parse_vector(v) -> list[float]:
@@ -509,7 +509,7 @@ class RankingEngine:
             # 小分類（事前計算済み or フォールバック）
             minors = r.get("category_minor") or []
             if not minors:
-                minors = extract_minor_keywords(r.get("title", ""))
+                minors = extract_keywords(r.get("title", ""))
             minor_list.extend(minors)
 
         def _calc_health(items: list[str]) -> dict:

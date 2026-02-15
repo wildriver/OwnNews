@@ -9,7 +9,7 @@ import sys
 
 from supabase import create_client
 
-from categories import classify_medium, extract_minor_keywords
+from categories import classify_medium, extract_keywords
 
 
 def _parse_vector(v):
@@ -27,7 +27,7 @@ def backfill_categories(supabase_url: str, supabase_key: str, batch_size: int = 
     # まだ category_medium, category_minor が未設定の記事を取得
     resp = (
         sb.table("articles")
-        .select("id, title, category")
+        .select("id, title, summary, category")
         .is_("category_medium", "null")
         .is_("category_minor", "null")
         .not_.is_("embedding", "null")  # ベクトル化済みの記事のみ対象
@@ -49,12 +49,12 @@ def backfill_categories(supabase_url: str, supabase_key: str, batch_size: int = 
         rows_to_update = []
         for a in batch:
             med = classify_medium(a.get("title", ""), a.get("category", ""))
-            minors = extract_minor_keywords(a.get("title", ""))
+            kws = extract_keywords(a.get("title", ""), a.get("summary", ""))
 
             rows_to_update.append({
                 "id": a["id"],
                 "category_medium": med,
-                "category_minor": list(minors) if minors else [],
+                "category_minor": kws,
             })
 
         # Supabaseのアップデート関数を使用

@@ -1,9 +1,14 @@
 """
 カテゴリ分類ロジック（collector.py と engine.py で共有）
-大分類→中分類キーワードマッピング、中分類・小分類の抽出関数を提供する。
+大分類→中分類キーワードマッピング、キーワード抽出関数を提供する。
+キーワード抽出は Groq API (llama-3.1-8b-instant) を使用し、
+APIが利用できない場合はカタカナ固有名詞+「」内テキストのフォールバックを使用。
 """
 
+import os
 import re
+
+import requests
 
 # 大分類→中分類キーワードのマッピング
 CATEGORY_TAXONOMY: dict[str, list[str]] = {
@@ -27,10 +32,12 @@ _KATAKANA_RE = re.compile(r"[ァ-ヴー]{3,}")
 # 「」内テキスト抽出パターン
 _BRACKET_RE = re.compile(r"「([^」]+)」")
 
-# 小分類で除外する一般的なカタカナ語
-_COMMON_KATAKANA = frozenset([
+# キーワードで除外する一般的な語句
+_COMMON_KEYWORDS = frozenset([
     "ニュース", "テレビ", "インター", "サービス",
     "システム", "プロジェクト", "コメント",
+    "開発", "リリース", "アップデート", "機能",
+    "アプリ", "サイト", "対応",
 ])
 
 
@@ -50,13 +57,98 @@ def classify_medium(title: str, category: str) -> str:
     return "その他"
 
 
-def extract_minor_keywords(title: str) -> list[str]:
-    """カタカナ固有名詞と「」内テキストを小分類として抽出。"""
-    minors: list[str] = []
+def extract_keywords(title: str, summary: str = "") -> list[str]:
+    """記事の特徴的なキーワードを最大5つ抽出する。
+
+    Groq API (llama-3.1-8b-instant) でキーワード抽出を試み、
+    APIキーが未設定またはエラー時はフォールバック（カタカナ固有名詞+「」内テキスト）を使用。
+
+    Returns:
+        list[str]: キーワードのリスト（最大5つ）。DB の text[] カラムにそのまま格納可能。
+    """
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        return _fallback_extract_keywords(title)
+
+    text = f"{title} {summary}".strip()
+    if len(text) < 10:
+        return _fallback_extract_keywords(title)
+
+    try:
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "あなたはニュース記事のキーワード抽出器です。"
+                            "記事の特徴を表すキーワードを最大5つ、カンマ区切りで出力してください。"
+                            "キーワードのみを出力し、説明や番号は不要です。"
+                            "例: AI,半導体,NVIDIA,投資,競争"
+                        ),
+                    },
+                    {"role": "user", "content": text[:1500]},
+                ],
+                "max_tokens": 80,
+                "temperature": 0.2,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"]
+        keywords = _parse_keywords(content)
+        if keywords:
+            return keywords[:5]
+    except Exception as e:
+        print(f"Groq API キーワード抽出エラー: {e}")
+
+    return _fallback_extract_keywords(title)
+
+
+def _parse_keywords(content: str) -> list[str]:
+    """Groq API レスポンスからキーワードリストを抽出する。"""
+    # 改行・箇条書き記号を除去
+    content = re.sub(r"[\n・\-\*\d+\.\)]+", " ", content)
+    # カンマ区切りで分割
+    keywords = [kw.strip() for kw in content.split(",")]
+    # フィルタ: 空文字、短すぎ、メタテキストを除外
+    keywords = [
+        kw for kw in keywords
+        if kw and len(kw) >= 2
+        and kw not in _COMMON_KEYWORDS
+        and not kw.startswith("キーワード")
+        and not kw.startswith("Keywords")
+    ]
+    # 重複除去（順序保持）
+    seen: set[str] = set()
+    unique = []
+    for kw in keywords:
+        if kw not in seen:
+            seen.add(kw)
+            unique.append(kw)
+    return unique
+
+
+def _fallback_extract_keywords(title: str) -> list[str]:
+    """Groq API 不使用時のフォールバック（カタカナ固有名詞+「」内テキスト）。"""
+    keywords: list[str] = []
     for m in _KATAKANA_RE.finditer(title):
         word = m.group()
-        if word not in _COMMON_KATAKANA:
-            minors.append(word)
+        if word not in _COMMON_KEYWORDS:
+            keywords.append(word)
     for m in _BRACKET_RE.finditer(title):
-        minors.append(m.group(1))
-    return minors
+        keywords.append(m.group(1))
+    # 重複除去
+    seen: set[str] = set()
+    unique = []
+    for kw in keywords:
+        if kw not in seen:
+            seen.add(kw)
+            unique.append(kw)
+    return unique[:5]
