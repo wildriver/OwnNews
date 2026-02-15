@@ -60,9 +60,9 @@ def backfill_categories(supabase_url: str, supabase_key: str) -> int:
         if (i + 1) % 50 == 0:
             print(f"Processed {i + 1}/{total} articles...")
 
-        # Groq API レート制限対策: 30 RPM = 2秒間隔
-        # ただし fallback（API key なしやエラー時）はスリープ不要
-        time.sleep(2.1)
+        # Groq API 使用時はレート制限対策
+        if os.environ.get("GROQ_API_KEY"):
+            time.sleep(4.0)
 
     print(f"Backfill complete. Updated {updated} articles.")
     return updated
