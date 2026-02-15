@@ -35,6 +35,7 @@ div[data-testid="stContainer"] {
     border: 1px solid #e8e8e8 !important;
     border-radius: 10px !important;
     transition: box-shadow 0.15s;
+    position: relative;
 }
 div[data-testid="stContainer"]:hover {
     box-shadow: 0 2px 12px rgba(0,0,0,0.08);
@@ -46,6 +47,24 @@ div.stButton > button {
     padding: 0.3rem 0.6rem;
     min-height: 0;
     border-radius: 6px;
+}
+
+/* 除外ボタン（小さな×）— カード内の最初のボタン（✕）をスタイリング */
+div[data-testid="stContainer"] > div:first-child div.stButton > button {
+    font-size: 0.65rem;
+    padding: 0.05rem 0.3rem;
+    min-height: 0;
+    line-height: 1.2;
+    border-radius: 50%;
+    opacity: 0.35;
+    border: 1px solid #ccc;
+    background: white;
+    float: right;
+    margin: -4px -4px 0 0;
+}
+div[data-testid="stContainer"] > div:first-child div.stButton > button:hover {
+    opacity: 1;
+    background: #f0f0f0;
 }
 
 /* 画像 */
@@ -71,11 +90,6 @@ div[data-testid="stImage"] img {
     font-size: 0.75rem;
     color: #888;
     margin-bottom: 2px;
-}
-.card-reason {
-    font-size: 0.72rem;
-    color: #1a73e8;
-    margin: 1px 0 3px;
 }
 .card-detail {
     font-size: 0.88rem;
@@ -117,22 +131,27 @@ div[data-testid="stImage"] img {
 import streamlit.components.v1 as components
 components.html("""
 <script>
-document.addEventListener('click', function(e) {
-    var row = e.target.closest('[data-detail]');
-    if (!row) return;
-    var detailId = row.getAttribute('data-detail');
-    var el = window.parent.document.getElementById(detailId);
-    if (!el) return;
-    var aid = detailId.replace('detail_', '');
-    var arrow = window.parent.document.getElementById('arrow_' + aid);
-    if (el.style.display === 'none' || el.style.display === '') {
-        el.style.display = 'block';
-        if (arrow) arrow.textContent = '▼';
-    } else {
-        el.style.display = 'none';
-        if (arrow) arrow.textContent = '▶';
-    }
-});
+// 親ドキュメントにイベントリスナーを追加（iframeではなく親でクリックをキャッチ）
+var parentDoc = window.parent.document;
+if (!parentDoc._ownNewsClickBound) {
+    parentDoc.addEventListener('click', function(e) {
+        var row = e.target.closest('[data-detail]');
+        if (!row) return;
+        var detailId = row.getAttribute('data-detail');
+        var el = parentDoc.getElementById(detailId);
+        if (!el) return;
+        var aid = detailId.replace('detail_', '');
+        var arrow = parentDoc.getElementById('arrow_' + aid);
+        if (el.style.display === 'none' || el.style.display === '') {
+            el.style.display = 'block';
+            if (arrow) arrow.textContent = '▼';
+        } else {
+            el.style.display = 'none';
+            if (arrow) arrow.textContent = '▶';
+        }
+    });
+    parentDoc._ownNewsClickBound = true;
+}
 </script>
 """, height=0)
 
@@ -450,7 +469,6 @@ def _build_card_html(group: dict, dive_result: str | None) -> str:
     summary = group.get("summary", "") or ""
     category = group.get("category", "")
     published = group.get("published", "")
-    reason = group.get("reason", "")
     similarity = group.get("similarity", 0)
     score_pct = max(0, min(100, similarity * 100))
 
@@ -470,14 +488,6 @@ def _build_card_html(group: dict, dive_result: str | None) -> str:
     if related:
         meta.append(f"+{len(related)}")
     meta_str = " ／ ".join(meta)
-
-    # 推薦理由
-    reason_html = ""
-    if reason:
-        reason_html = (
-            f'<div class="card-reason">'
-            f'💡 {html_module.escape(reason)}</div>'
-        )
 
     # 詳細コンテンツ
     detail_parts = []
@@ -508,7 +518,6 @@ def _build_card_html(group: dict, dive_result: str | None) -> str:
 
     return f"""
     <div class="card-meta">{meta_str}</div>
-    {reason_html}
     <div class="card-title-row" data-detail="{detail_id}">
         <span id="arrow_{aid}">{arrow}</span> {html_module.escape(title)}
     </div>
@@ -531,6 +540,11 @@ def render_card(group: dict, engine: RankingEngine) -> None:
     dive_result = st.session_state.get(dive_key)
 
     with st.container(border=True):
+        # 除外ボタン（小さな×、右上に配置）
+        if st.button("✕", key=f"x_{aid}", help="この記事を除外"):
+            _do_interaction(engine, all_ids, "not_interested", invalidate=True)
+            st.rerun()
+
         # 画像（あれば）
         if _has_valid_image(group):
             st.image(group["image_url"], use_container_width=True)
@@ -539,22 +553,16 @@ def render_card(group: dict, engine: RankingEngine) -> None:
         card_html = _build_card_html(group, dive_result)
         st.markdown(card_html, unsafe_allow_html=True)
 
-        # インタラクションボタン（Streamlit — サーバー通信が必要）
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("🔍 深掘り", key=f"d_{aid}"):
-                _do_interaction(engine, all_ids, "deep_dive", invalidate=False)
-                with st.spinner("分析中..."):
-                    try:
-                        analysis = deep_dive(title, summary)
-                    except Exception as e:
-                        analysis = f"分析失敗: {e}"
-                st.session_state[dive_key] = analysis
-                st.rerun(scope="fragment")
-        with c2:
-            if st.button("👎 除外", key=f"x_{aid}"):
-                _do_interaction(engine, all_ids, "not_interested", invalidate=True)
-                st.rerun()
+        # 深掘りボタン（詳細エリアの下に表示）
+        if st.button("🔍 深掘り", key=f"d_{aid}"):
+            _do_interaction(engine, all_ids, "deep_dive", invalidate=False)
+            with st.spinner("分析中..."):
+                try:
+                    analysis = deep_dive(title, summary)
+                except Exception as e:
+                    analysis = f"分析失敗: {e}"
+            st.session_state[dive_key] = analysis
+            st.rerun(scope="fragment")
 
 
 def _invalidate_feed() -> None:
