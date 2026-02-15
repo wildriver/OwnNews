@@ -13,6 +13,8 @@ import feedparser
 import requests
 from supabase import create_client
 
+from categories import classify_medium, extract_minor_keywords
+
 # --- 設定 (環境変数 or Streamlit secrets) ---
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
@@ -147,6 +149,8 @@ def collect() -> int:
                 "summary": a["summary"],
                 "published": a["published"],
                 "category": a["category"],
+                "category_medium": classify_medium(a["title"], a["category"]),
+                "category_minor": extract_minor_keywords(a["title"]),
                 "image_url": img,
                 "embedding": emb,
             })

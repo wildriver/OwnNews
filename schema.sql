@@ -13,6 +13,8 @@ create table if not exists articles (
     summary      text,
     published    text,
     category     text,
+    category_medium text default '',
+    category_minor  text[] default '{}',
     image_url    text,
     embedding    vector(768),
     collected_at timestamptz default now()

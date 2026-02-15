@@ -7,12 +7,13 @@ Ranking Engine (単一DB + Google Auth版)
 
 import json
 import math
-import re
 from collections import Counter
 from datetime import date
 
 import numpy as np
 from supabase import Client
+
+from categories import CATEGORY_TAXONOMY, classify_medium, extract_minor_keywords
 
 
 def _parse_vector(v) -> list[float]:
@@ -26,28 +27,6 @@ ONBOARDING_CATEGORIES = [
     "政治", "経済", "国際", "IT・テクノロジー",
     "スポーツ", "エンタメ", "科学", "社会", "地方",
 ]
-
-# 大分類→中分類キーワードのマッピング
-CATEGORY_TAXONOMY: dict[str, list[str]] = {
-    "政治": ["選挙", "国会", "内閣", "与党", "野党", "外交", "防衛", "憲法", "政策", "行政"],
-    "経済": ["株式", "為替", "金融", "企業", "雇用", "貿易", "景気", "物価", "税制", "投資", "不動産"],
-    "国際": ["米国", "中国", "韓国", "北朝鮮", "ロシア", "EU", "中東", "アジア", "国連", "紛争"],
-    "IT・テクノロジー": ["AI", "人工知能", "スマホ", "セキュリティ", "SNS", "半導体", "ロボット", "宇宙", "通信", "ゲーム", "アプリ"],
-    "スポーツ": ["野球", "サッカー", "テニス", "ゴルフ", "バスケ", "陸上", "水泳", "格闘技", "相撲", "競馬", "五輪", "ラグビー"],
-    "エンタメ": ["映画", "音楽", "ドラマ", "アニメ", "芸能", "お笑い", "漫画", "舞台", "アイドル", "バラエティ"],
-    "科学": ["宇宙", "医療", "環境", "気候", "生物", "物理", "化学", "研究", "ノーベル", "発見"],
-    "社会": ["事件", "事故", "裁判", "福祉", "教育", "医療", "災害", "犯罪", "少子化", "高齢化"],
-    "地方": ["観光", "祭り", "特産", "自治体", "再開発", "過疎", "移住", "地域"],
-    "ビジネス": ["起業", "決算", "M&A", "IPO", "マーケティング", "人事", "経営"],
-    "生活": ["健康", "グルメ", "レシピ", "育児", "住まい", "ファッション", "旅行"],
-    "環境": ["気候変動", "脱炭素", "再生可能", "リサイクル", "生態系", "温暖化"],
-    "文化": ["文学", "美術", "歴史", "伝統", "哲学", "宗教", "建築"],
-}
-
-# カタカナ固有名詞抽出パターン（3文字以上）
-_KATAKANA_RE = re.compile(r"[ァ-ヴー]{3,}")
-# 「」内テキスト抽出パターン
-_BRACKET_RE = re.compile(r"「([^」]+)」")
 
 
 class RankingEngine:
@@ -481,37 +460,12 @@ class RankingEngine:
 
     # --- 階層的カテゴリ分類 ---
 
-    @staticmethod
-    def _classify_medium(title: str, category: str) -> str:
-        """タイトル内キーワードマッチで中分類を返す。"""
-        cats = [c.strip() for c in category.split(",") if c.strip()] if category else []
-        for cat in cats:
-            keywords = CATEGORY_TAXONOMY.get(cat, [])
-            for kw in keywords:
-                if kw in title:
-                    return kw
-        # カテゴリ不一致でも全分類を走査
-        for keywords in CATEGORY_TAXONOMY.values():
-            for kw in keywords:
-                if kw in title:
-                    return kw
-        return "その他"
-
-    @staticmethod
-    def _extract_minor_keywords(title: str) -> list[str]:
-        """カタカナ固有名詞と「」内テキストを小分類として抽出。"""
-        minors: list[str] = []
-        for m in _KATAKANA_RE.finditer(title):
-            word = m.group()
-            # 一般的な語を除外
-            if word not in ("ニュース", "テレビ", "インター", "サービス", "システム", "プロジェクト", "コメント"):
-                minors.append(word)
-        for m in _BRACKET_RE.finditer(title):
-            minors.append(m.group(1))
-        return minors
-
     def get_hierarchical_health(self) -> dict:
-        """大・中・小分類それぞれの情報的健康スコアを計算する。"""
+        """大・中・小分類それぞれの情報的健康スコアを計算する。
+
+        事前計算済みの category_medium / category_minor を使用。
+        未計算の記事はフォールバックでリアルタイム計算する。
+        """
         interactions_resp = (
             self.sb.table("user_interactions")
             .select("article_id, interaction_type")
@@ -532,7 +486,7 @@ class RankingEngine:
 
         art_resp = (
             self.sb.table("articles")
-            .select("title, category")
+            .select("category, category_medium, category_minor, title")
             .in_("id", viewed_ids)
             .execute()
         )
@@ -542,17 +496,21 @@ class RankingEngine:
         minor_list: list[str] = []
 
         for r in art_resp.data or []:
-            title = r.get("title", "")
             category = r.get("category", "")
             # 大分類
             if category:
                 cats = [c.strip() for c in category.split(",") if c.strip()]
                 major_list.extend(cats)
-            # 中分類
-            med = self._classify_medium(title, category)
+            # 中分類（事前計算済み or フォールバック）
+            med = r.get("category_medium") or ""
+            if not med:
+                med = classify_medium(r.get("title", ""), category)
             medium_list.append(med)
-            # 小分類
-            minor_list.extend(self._extract_minor_keywords(title))
+            # 小分類（事前計算済み or フォールバック）
+            minors = r.get("category_minor") or []
+            if not minors:
+                minors = extract_minor_keywords(r.get("title", ""))
+            minor_list.extend(minors)
 
         def _calc_health(items: list[str]) -> dict:
             if not items:
@@ -578,6 +536,50 @@ class RankingEngine:
             "medium": _calc_health(medium_list),
             "minor": _calc_health(minor_list),
             "total_viewed": len(viewed_ids),
+        }
+
+    # --- フィルタバブル分析 ---
+
+    def get_bubble_analysis(self) -> dict:
+        """全記事分布 vs ユーザ閲覧分布を比較し、フィルタバブル度を算出する。"""
+        # 1. 全記事の大分類分布
+        all_resp = self.sb.table("articles").select("category").execute()
+        all_cats: Counter = Counter()
+        for r in all_resp.data or []:
+            if r.get("category"):
+                for c in r["category"].split(","):
+                    c = c.strip()
+                    if c:
+                        all_cats[c] += 1
+
+        # 2. ユーザ閲覧分布
+        user_health = self.get_info_health()
+        user_dist = user_health["category_distribution"]
+
+        # 3. 比較
+        all_total = sum(all_cats.values()) or 1
+        user_total = sum(user_dist.values()) or 1
+        categories = sorted(set(list(all_cats.keys()) + list(user_dist.keys())))
+
+        comparison = []
+        for cat in categories:
+            all_pct = round(all_cats.get(cat, 0) / all_total * 100, 1)
+            user_pct = round(user_dist.get(cat, 0) / user_total * 100, 1)
+            comparison.append({
+                "category": cat,
+                "world_pct": all_pct,
+                "user_pct": user_pct,
+                "gap": round(user_pct - all_pct, 1),
+            })
+
+        # 4. バブル度スコア（0=均等, 100=完全偏り）
+        bubble_score = sum(abs(c["gap"]) for c in comparison) / 2
+
+        return {
+            "comparison": comparison,
+            "bubble_score": round(bubble_score, 1),
+            "total_articles": sum(all_cats.values()),
+            "user_viewed": user_total,
         }
 
     # --- 推薦理由の説明 ---
