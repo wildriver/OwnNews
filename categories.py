@@ -7,6 +7,7 @@ APIが利用できない場合はカタカナ固有名詞+「」内テキスト�
 
 import os
 import re
+import time
 
 import requests
 
@@ -74,39 +75,47 @@ def extract_keywords(title: str, summary: str = "") -> list[str]:
     if len(text) < 10:
         return _fallback_extract_keywords(title)
 
-    try:
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "llama-3.1-8b-instant",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "あなたはニュース記事のキーワード抽出器です。"
-                            "記事の特徴を表すキーワードを最大5つ、カンマ区切りで出力してください。"
-                            "キーワードのみを出力し、説明や番号は不要です。"
-                            "例: AI,半導体,NVIDIA,投資,競争"
-                        ),
-                    },
-                    {"role": "user", "content": text[:1500]},
-                ],
-                "max_tokens": 80,
-                "temperature": 0.2,
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
-        keywords = _parse_keywords(content)
-        if keywords:
-            return keywords[:5]
-    except Exception as e:
-        print(f"Groq API キーワード抽出エラー: {e}")
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "あなたはニュース記事のキーワード抽出器です。"
+                                "記事の特徴を表すキーワードを最大5つ、カンマ区切りで出力してください。"
+                                "キーワードのみを出力し、説明や番号は不要です。"
+                                "例: AI,半導体,NVIDIA,投資,競争"
+                            ),
+                        },
+                        {"role": "user", "content": text[:1500]},
+                    ],
+                    "max_tokens": 80,
+                    "temperature": 0.2,
+                },
+                timeout=15,
+            )
+            if resp.status_code == 429:
+                wait = 5 * (attempt + 1)
+                print(f"Groq API レート制限、{wait}秒待機... (試行 {attempt + 1}/3)")
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+            keywords = _parse_keywords(content)
+            if keywords:
+                return keywords[:5]
+            break
+        except Exception as e:
+            print(f"Groq API キーワード抽出エラー: {e}")
+            break
 
     return _fallback_extract_keywords(title)
 
