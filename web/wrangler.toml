@@ -1,0 +1,10 @@
+name = "ownnews-web"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+[vars]
+# Placeholder for secrets. Use Cloudflare Dashboard to set these.
+# NEXT_PUBLIC_SUPABASE_URL = "..."
+# NEXT_PUBLIC_SUPABASE_ANON_KEY = "..."
+# GROQ_API_KEY = "..."

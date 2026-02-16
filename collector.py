@@ -1,27 +1,19 @@
 """
-RSS Collector Module (Cloud版)
-news.ceek.jp のRSSフィードを巡回し、Cloudflare Workers AIでベクトル化後、
-Supabase (Postgres + pgvector) に保存する。
-GitHub Actionsから定期実行される想定。
+RSS Collector Module (Simplified)
+Fetches RSS feeds and saves raw data to Supabase.
+Categorization and Embedding are handled by Cloudflare Workers.
 """
 
 import hashlib
 import os
-import re
 
 import feedparser
 import requests
 from supabase import create_client
 
-from categories import classify_medium, extract_keywords
-
-# --- 設定 (環境変数 or Streamlit secrets) ---
-
+# --- Config ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "")
-CF_API_TOKEN = os.environ.get("CF_API_TOKEN", "")
-CF_MODEL = "@cf/baai/bge-base-en-v1.5"
 
 FEEDS = [
     "https://news.ceek.jp/search.cgi?feed=1",
@@ -91,25 +83,12 @@ def fetch_ogp_image(url: str) -> str:
     return ""
 
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Cloudflare Workers AI でテキストをベクトル化する。"""
-    url = (
-        f"https://api.cloudflare.com/client/v4/accounts/"
-        f"{CF_ACCOUNT_ID}/ai/run/{CF_MODEL}"
-    )
-    resp = requests.post(
-        url,
-        headers={"Authorization": f"Bearer {CF_API_TOKEN}"},
-        json={"text": texts},
-        timeout=120,
-    )
-    resp.raise_for_status()
-    result = resp.json()
-    return result["result"]["data"]
-
-
 def collect() -> int:
     """全フィードを巡回し、新規記事をSupabaseに保存する。"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("Error: SUPABASE_URL and SUPABASE_KEY must be set.")
+        return 0
+
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     # 既存リンクを取得してデデュープ
@@ -128,34 +107,31 @@ def collect() -> int:
         print("No new articles found.")
         return 0
 
-    # バッチでベクトル化（Cloudflare APIのバッチ上限を考慮し100件ずつ）
-    batch_size = 100
-    for i in range(0, len(new_articles), batch_size):
-        batch = new_articles[i : i + batch_size]
-        texts = [f"{a['title']} {a['summary']}" for a in batch]
-        embeddings = embed_texts(texts)
+    print(f"Found {len(new_articles)} new articles. Saving raw data...")
 
-        # OGP画像を並列的に取得
-        image_urls = []
-        for a in batch:
-            image_urls.append(fetch_ogp_image(a["link"]))
+    rows = []
+    for a in new_articles:
+        # Fetch OGP image
+        img = fetch_ogp_image(a["link"])
+        rows.append({
+            "id": a["id"],
+            "title": a["title"],
+            "link": a["link"],
+            "summary": a["summary"],
+            "published": a["published"],
+            "category": a["category"],
+            "image_url": img,
+            # embedding_m3, category_medium, etc. are left null for the Worker
+        })
 
-        rows = []
-        for a, emb, img in zip(batch, embeddings, image_urls):
-            rows.append({
-                "id": a["id"],
-                "title": a["title"],
-                "link": a["link"],
-                "summary": a["summary"],
-                "published": a["published"],
-                "category": a["category"],
-                "category_medium": classify_medium(a["title"], a["category"]),
-                "category_minor": extract_keywords(a["title"], a["summary"]),
-                "image_url": img,
-                "embedding": emb,
-            })
-
-        sb.table("articles").upsert(rows, on_conflict="link").execute()
+    # Upsert in chunks
+    batch_size = 50
+    for i in range(0, len(rows), batch_size):
+        chunk = rows[i : i + batch_size]
+        try:
+             sb.table("articles").upsert(chunk, on_conflict="link").execute()
+        except Exception as e:
+            print(f"Error upserting chunk: {e}")
 
     print(f"Collected {len(new_articles)} new articles.")
     return len(new_articles)

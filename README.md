@@ -1,177 +1,76 @@
 # OwnNews — パーソナル・ニュースキュレーター
 
-Google認証で誰でもすぐに使える、パーソナライズされたニュースキュレーターです。記事のベクトル類似度に基づくレコメンデーションと、情報摂取の偏りを可視化する「情報的健康」機能を備えています。
+Google認証で誰でもすぐに使える、パーソナライズされたニュースキュレーターです。最新のNext.js App RouterとCloudflare Workers AIを組み合わせたアーキテクチャに進化しました。
 
 ## コンセプト
 
 - **ゼロセットアップ**: Googleアカウントでログインするだけで利用開始
-- **情報的健康**: 食事の栄養バランスのアナロジーで情報摂取の偏りを可視化
-- **コールドスタート解決**: オンボーディングでカテゴリ選択 + 記事投票
+- **情報的健康**: 情報摂取の偏りを可視化し、バランスの良い情報収集をサポート
+- **個人化と探索の両立**: 独自のアルゴリズムにより、好きな話題と新しい発見をブレンド
+- **多角的視点**: 似た内容の記事を自動グルーピングし、異なるメディアの報じ方を比較
 
 ## アーキテクチャ
 
-```
-GitHub Actions (1日5回cron)
+```text
+GitHub Actions (Python)
   │  ① RSS取得 (news.ceek.jp)
-  │  ② Cloudflare Workers AI でベクトル化
-  │  ③ Supabase へ保存
+  │  ② Cloudflare Workers (article-processor) へ送信
   ▼
-┌──────────────────────────┐
-│  Supabase（運営者管理）     │
-│  Postgres + pgvector      │
-│  ├─ articles (embedding)  │
-│  ├─ user_profile          │
-│  ├─ user_vectors          │
-│  ├─ user_interactions     │
-│  ├─ match_articles() RPC  │
-│  ├─ random_articles() RPC │
-│  └─ public_filters (Ph2)  │
-└───────────┬──────────────┘
-            │
-            ▼
-  ┌──────────────────┐
-  │  Streamlit Cloud │
-  │  (単一Webアプリ)  │
-  │  ├─ Google認証    │
-  │  ├─ オンボーディング│
-  │  ├─ ニュースフィード│
-  │  ├─ 情報的健康パネル│
-  │  ├─ ダッシュボード  │
-  │  └─ 🔍 深掘り→Groq│
-  └──────────────────┘
+Cloudflare Workers (AI Processor)
+  │  ③ BGE-M3 によるベクトル化
+  │  ④ Llama 3 による多段階カテゴリ分類
+  ▼
+Supabase (PostgreSQL + pgvector)
+  │  ⑤ 記事・ベクトルの保存
+  │  ⑥ ユーザープロフィール・履歴管理
+  ▼
+Next.js Web App (Vercel/Cloudflare Pages)
+  │  ⑦ パーソナライズド・ランキング・エンジン
+  │  ⑧ 「別の視点」グルーピング・エンジン
+  └─ UI: Tailwind CSS + Lucide Icons
 ```
 
-| 役割 | サービス | 無料枠 |
-|------|---------|--------|
-| 定期収集 | GitHub Actions | パブリックリポジトリ無制限 |
-| DB | Supabase (Postgres + pgvector) | 500MB DB |
-| 埋め込み | Cloudflare Workers AI | 10,000 neurons/日 |
-| 深掘り推論 | Groq API | 無料枠あり |
-| UI | Streamlit Community Cloud | パブリックアプリ無料 |
-| 認証 | Google OAuth 2.0 | 無料 |
+## 技術スタック
 
-## 運営者セットアップ
+| 役割 | テクノロジー / サービス |
+|------|-------------------------|
+| **Frontend** | Next.js 15 (App Router), TypeScript, Tailwind CSS |
+| **Backend** | Next.js Server Actions, Supabase (Auth/Database) |
+| **Database** | PostgreSQL + pgvector (Supabase) |
+| **AI Processing** | Cloudflare Workers AI, BGE-M3 (Embedding), Llama 3 (Classification) |
+| **Collector** | Python, GitHub Actions |
+| **Discovery** | Groq API (分析・深掘り) |
 
-### 1. Supabase を作成
+## 開発者向けセットアップ
 
-1. [supabase.com](https://supabase.com) でプロジェクトを作成
-2. **SQL Editor** で [schema.sql](schema.sql) を実行
-3. **Project Settings > API** から URL と anon key を控える
+### 1. Supabase の設定
+1. [Supabase](https://supabase.com) でプロジェクトを作成
+2. `migrate_taxonomy.sql` および `migrate_m3.sql` を実行してテーブルと関数を作成
+3. Auth設定で Google Provider を有効化
 
-### 2. Cloudflare Workers AI を設定
+### 2. Cloudflare Workers のデプロイ
+1. `workers/article-processor` ディレクトリで `npx wrangler deploy` を実行
+2. Workers の環境変数に Supabase の API 情報を設定
 
-1. [dash.cloudflare.com](https://dash.cloudflare.com) でアカウント作成
-2. **Workers & Pages** から Account ID を取得
-3. **My Profile > API Tokens** で Workers AI Read 権限のトークンを作成
+### 3. Web アプリケーションの起動
+1. `web` ディレクトリへ移動
+2. `.env.local` に必要な環境変数（Supabase, Groq等）を設定
+3. `npm install`
+4. `npm run dev`
 
-### 3. Google OAuth を設定
+### 4. 記事収集スクリプト
+1. ルートディレクトリの `collector.py` を実行（または GitHub Actions で定期実行）
 
-1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成
-2. **APIとサービス > OAuth同意画面** を設定（外部ユーザ向け）
-3. **APIとサービス > 認証情報 > OAuth 2.0 クライアントID** を作成
-   - アプリケーションの種類: ウェブアプリケーション
-   - 承認済みのリダイレクト URI: `https://ownnews.streamlit.app/oauth2callback`
-4. クライアントID と クライアントシークレット を控える
+## 主要機能
 
-### 4. GitHub リポジトリ設定
+### ニュースフィード
+- **フィルタ強度設定**: パーソナライズ（個人化）の度合いをスライダーで調整
+- **まとめ強度設定**: 関連記事をどの程度厳密にグルーピングするかを調整（コサイン類似度）
+- **深掘り機能**: 記事の内容を AI が分析し、背景知識や関連情報を提示
 
-Repository secrets に以下を登録（記事収集用）:
+### ダッシュボード & 情報的健康
+- **カテゴリ分布**: 自分がどのジャンルの記事を多く読んでいるかを可視化
+- **時間軸分析**: 興味関心の移り変わりを期間別（週/月/3ヶ月）で確認
 
-| Name | 値 |
-|------|---|
-| `SUPABASE_URL` | Supabase Project URL |
-| `SUPABASE_KEY` | Supabase anon public キー |
-| `CF_ACCOUNT_ID` | Cloudflare Account ID |
-| `CF_API_TOKEN` | Cloudflare API Token |
-
-### 5. Streamlit Cloud デプロイ
-
-Streamlit Cloud の Secrets に以下を設定:
-
-```toml
-SUPABASE_URL = "https://xxxxx.supabase.co"
-SUPABASE_KEY = "eyJ..."
-GROQ_API_KEY = "gsk_..."
-
-[auth]
-redirect_uri = "https://ownnews.streamlit.app/oauth2callback"
-cookie_secret = "ランダムな文字列"
-
-[auth.google]
-client_id = "xxx.apps.googleusercontent.com"
-client_secret = "GOCSPX-xxx"
-server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
-```
-
-### 6. 動作確認
-
-**Actions** タブ > **Collect News** > **Run workflow** で手動実行し、記事が収集されることを確認。
-
-## 利用者向け
-
-**Googleアカウントでログインするだけ**で利用できます。セットアップは不要です。
-
-1. アプリにアクセス
-2. 「Googleでログイン」をクリック
-3. 初回はオンボーディング（カテゴリ選択 + 記事投票）
-4. パーソナライズされたニュースフィードが表示されます
-
-## 使い方
-
-### ニュースタブ
-
-- **フィルタ強度**: 1.0（パーソナライズ強） ↔ 0.0（多様性重視）
-- **👁 閲覧記録**: 弱い正のフィードバック (α=0.03)
-- **🔍 深掘り**: Groq API で背景分析 + 強い正のフィードバック (α=0.15)
-- **👎 興味なし**: 強い負のフィードバック (α=-0.2)
-
-### 情報的健康パネル（サイドバー）
-
-食事の栄養バランスのアナロジーで、情報摂取の偏りを可視化します:
-
-| 指標 | 計算方法 |
-|------|---------
-| 多様性スコア | Shannon entropy（0-100に正規化） |
-| 偏食度 | 最頻カテゴリの占有率 |
-| 不足カテゴリ | 閲覧数0のカテゴリを提案 |
-
-### ダッシュボードタブ
-
-- 統計（総記事数、閲覧数、興味なし数）
-- カテゴリ別閲覧グラフ
-- 日別記事収集数
-- 閲覧履歴・除外履歴
-
-### フィルタ比較タブ（Phase 2）
-
-将来的に実装予定:
-- 自分のフィルタを公開
-- 他ユーザのフィルタでニュースを閲覧
-- 情報摂取バランスの比較
-
-## ファイル構成
-
-```
-OwnNews/
-├── .github/workflows/
-│   └── collect.yml              # GitHub Actions (1日5回cron)
-├── .streamlit/
-│   └── secrets.toml.example     # シークレット設定テンプレート
-├── collector.py                  # RSS収集 + Cloudflare Embed + DB保存
-├── engine.py                     # ランキングエンジン + 情報的健康
-├── app.py                        # Streamlit UI (Google認証 + 3タブ)
-├── schema.sql                    # DBセットアップ用SQL
-├── requirements.txt              # Python依存パッケージ
-└── README.md                     # 本ファイル
-```
-
-## 設定リファレンス
-
-| 項目 | 場所 | デフォルト値 |
-|------|------|-------------|
-| Embedding モデル | `collector.py` | `@cf/baai/bge-base-en-v1.5` |
-| ベクトル次元数 | `schema.sql` | 768 |
-| Groq モデル | `app.py` | `llama-3.3-70b-versatile` |
-| RSS フィード | `collector.py` | news.ceek.jp 全13カテゴリ |
-| 収集間隔 | `collect.yml` | 1日5回 (JST 6,11,16,18,21時) |
-| フィードバック学習率 | `engine.py` | 👁 α=0.03 / 🔍 α=0.15 / 👎 α=-0.2 |
+## 免責事項
+本プロジェクトは研究・学習目的のプロトタイプです。RSSフィードの利用規約に従ってご利用ください。
