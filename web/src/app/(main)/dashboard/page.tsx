@@ -4,6 +4,7 @@ import { HealthRadarInfo } from '@/components/health-radar'
 import { ActivityBarChart } from '@/components/activity-chart'
 import { TopicTreemap } from '@/components/topic-treemap'
 import { KeywordBar } from '@/components/keyword-cloud'
+import { NutrientRadarInfo } from '@/components/nutrient-radar-info'
 import { TopicTransitionChart } from '@/components/topic-transition-chart'
 import { getInformationHealth, getActivityHistory, getInformationHealthSeries } from '@/lib/health'
 import Link from 'next/link'
@@ -80,11 +81,14 @@ export default async function DashboardPage({
                     </div>
                 </div>
 
-                {/* Row 1: Radar + Activity */}
+                {/* Row 1: Radar (Category + Nutrient) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <HealthRadarInfo distribution={healthStats.category_distribution} label={periodLabel} />
-                    <ActivityBarChart data={activityHistory} />
+                    <NutrientRadarInfo averages={healthStats.nutrient_averages} />
                 </div>
+
+                {/* Row 2: Activity */}
+                <ActivityBarChart data={activityHistory} />
 
                 {/* Row 2: Transition Line Chart */}
                 <TopicTransitionChart series={healthSeries} />

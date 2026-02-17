@@ -36,7 +36,9 @@ export function FilterSlider({ initialValue }: FilterSliderProps) {
             console.log('FilterSlider: Debounce finished, triggering update...', newValue)
 
             // Use replace + refresh to trigger SSR re-render without adding to history
-            router.replace(`/?strength=${newValue.toFixed(2)}`)
+            const params = new URLSearchParams(window.location.search)
+            params.set('strength', newValue.toFixed(2))
+            router.replace(`${window.location.pathname}?${params.toString()}`)
 
             // Persist to DB (fire and forget)
             try {

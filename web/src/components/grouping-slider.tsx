@@ -37,7 +37,7 @@ export function GroupingSlider({ initialValue }: GroupingSliderProps) {
             // Use replace + refresh to trigger SSR re-render without adding to history
             const params = new URLSearchParams(window.location.search)
             params.set('grouping', newValue.toFixed(2))
-            router.replace(`/?${params.toString()}`)
+            router.replace(`${window.location.pathname}?${params.toString()}`)
 
             // Persist to DB
             await updateGroupingThreshold(newValue)

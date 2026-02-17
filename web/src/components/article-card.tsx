@@ -12,10 +12,18 @@ import { GroupedArticle } from '@/lib/types'
 
 export function ArticleCard({ article }: { article: GroupedArticle }) {
     const [isVisible, setIsVisible] = useState(true)
-    const [imageLoaded, setImageLoaded] = useState(false)
+    const [imageLoaded, setImageLoaded] = useState(true) // Start visible to avoid hydration mismatch
     const [imageError, setImageError] = useState(false)
     const categories = article.category.split(',').filter(c => c.trim())
     const relatedCount = article.related?.length || 0;
+
+    // Nutrient scores with defaults
+    const factScore = article.fact_score ?? 0;
+    const contextScore = article.context_score ?? 0;
+    const perspectiveScore = article.perspective_score ?? 0;
+    const emotionScore = article.emotion_score ?? 0;
+    const immediacyScore = article.immediacy_score ?? 0;
+    const hasNutrients = factScore > 0 || contextScore > 0;
 
     const logInteraction = async (type: string) => {
         try {
@@ -92,6 +100,18 @@ export function ArticleCard({ article }: { article: GroupedArticle }) {
                             {article.published?.substring(0, 10)}
                         </span>
                     </div>
+
+                    {/* Nutrient Badges (Mini) */}
+                    {hasNutrients && (
+                        <div className="flex flex-wrap gap-1 mb-1">
+                            {factScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-blue-500/30 text-blue-400 bg-blue-500/10">事実高</Badge>}
+                            {contextScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-amber-500/30 text-amber-400 bg-amber-500/10">背景深</Badge>}
+                            {perspectiveScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-purple-500/30 text-purple-400 bg-purple-500/10">視点多</Badge>}
+                            {emotionScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-pink-500/30 text-pink-400 bg-pink-500/10">感情的</Badge>}
+                            {immediacyScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">速報</Badge>}
+                        </div>
+                    )}
+
                     <CardTitle className="text-sm font-bold leading-snug group-hover:text-sky-400 transition-colors line-clamp-2">
                         {article.title}
                     </CardTitle>

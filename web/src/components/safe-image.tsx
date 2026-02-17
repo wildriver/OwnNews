@@ -10,7 +10,7 @@ interface SafeImageProps {
 
 export function SafeImage({ src, alt, className }: SafeImageProps) {
     const [imageError, setImageError] = useState(false)
-    const [imageLoaded, setImageLoaded] = useState(false)
+    const [imageLoaded, setImageLoaded] = useState(true) // Start visible to avoid hydration mismatch/flicker
 
     if (imageError || !src) return null
 

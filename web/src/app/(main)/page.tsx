@@ -53,11 +53,12 @@ export default async function Home({
       if (needsProfileFetch) {
         const { data: profile } = await supabase
           .from('user_profile')
-          .select('filter_strength, grouping_threshold')
+          .select('*')
           .eq('user_id', user.email)
           .single()
         savedStrength = profile?.filter_strength ?? null
-        savedGrouping = profile?.grouping_threshold ?? null
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        savedGrouping = (profile as any)?.grouping_threshold ?? null
       }
 
       // Determine final strength: URL > Saved > Default
@@ -172,7 +173,7 @@ export default async function Home({
     if (latestCount > 0) {
       const { data: articlesRaw } = await supabase
         .from('articles')
-        .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, embedding_m3')
+        .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, embedding_m3, fact_score, context_score, perspective_score, emotion_score, immediacy_score')
         .order('collected_at', { ascending: false })
         .limit(latestCount + 60)
 

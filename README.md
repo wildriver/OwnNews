@@ -1,76 +1,65 @@
-# OwnNews — パーソナル・ニュースキュレーター
+# OwnNews: A Personalized, Health-Aware News Curator
 
-Google認証で誰でもすぐに使える、パーソナライズされたニュースキュレーターです。最新のNext.js App RouterとCloudflare Workers AIを組み合わせたアーキテクチャに進化しました。
+OwnNews is a next-generation news curation platform designed to promote "Information Health" by visualizing and balancing the user's information diet. It leverages state-of-the-art Large Language Models (LLMs) and Vector Search technologies to provide a personalized yet balanced news consumption experience.
 
-## コンセプト
+## 1. System Architecture
 
-- **ゼロセットアップ**: Googleアカウントでログインするだけで利用開始
-- **情報的健康**: 情報摂取の偏りを可視化し、バランスの良い情報収集をサポート
-- **個人化と探索の両立**: 独自のアルゴリズムにより、好きな話題と新しい発見をブレンド
-- **多角的視点**: 似た内容の記事を自動グルーピングし、異なるメディアの報じ方を比較
+The system is built on a modern, serverless architecture combining edge computing and vector databases.
 
-## アーキテクチャ
+### 1.1 Overview
+- **Frontend**: Next.js 15 (App Router) deployed on Cloudflare Pages.
+- **Backend / AI**: Cloudflare Workers executing AI models (Llama 3, BGE-M3).
+- **Database**: Supabase (PostgreSQL + pgvector) for relational data and vector similarity search.
+- **Data Collection**: Python scripts (GitHub Actions) fetching RSS feeds from [CEEK.JP NEWS](https://news.ceek.jp/).
 
-```text
-GitHub Actions (Python)
-  │  ① RSS取得 (news.ceek.jp)
-  │  ② Cloudflare Workers (article-processor) へ送信
-  ▼
-Cloudflare Workers (AI Processor)
-  │  ③ BGE-M3 によるベクトル化
-  │  ④ Llama 3 による多段階カテゴリ分類
-  ▼
-Supabase (PostgreSQL + pgvector)
-  │  ⑤ 記事・ベクトルの保存
-  │  ⑥ ユーザープロフィール・履歴管理
-  ▼
-Next.js Web App (Vercel/Cloudflare Pages)
-  │  ⑦ パーソナライズド・ランキング・エンジン
-  │  ⑧ 「別の視点」グルーピング・エンジン
-  └─ UI: Tailwind CSS + Lucide Icons
-```
+### 1.2 Data Pipeline
+1.  **Ingestion**: The collector script fetches news articles via RSS.
+2.  **Vectorization**: Content is embedded into 1024-dimensional vectors using **BAAI/bge-m3** (multilingual) on Cloudflare Workers.
+3.  **Analysis**: **Meta/Llama-3-8b-Instruct** analyzes the content to:
+    - Determine "Nutrient Scores" (Fact, Context, Perspective, Emotion, Immediacy).
+    - Assign precise categories.
+4.  **Storage**: Metadata and vectors are stored in Supabase.
 
-## 技術スタック
+## 2. Algorithmic Details
 
-| 役割 | テクノロジー / サービス |
-|------|-------------------------|
-| **Frontend** | Next.js 15 (App Router), TypeScript, Tailwind CSS |
-| **Backend** | Next.js Server Actions, Supabase (Auth/Database) |
-| **Database** | PostgreSQL + pgvector (Supabase) |
-| **AI Processing** | Cloudflare Workers AI, BGE-M3 (Embedding), Llama 3 (Classification) |
-| **Collector** | Python, GitHub Actions |
-| **Discovery** | Groq API (分析・深掘り) |
+### 2.1 Information Nutrient Scoring
+To quantify the "nutritional value" of information, we employ a 5-axis scoring system calculated by Llama 3:
+- **Fact (Protein)**: Objectivity, data presence, and 5W1H clarity.
+- **Context (Carbohydrate)**: Background information and historical context.
+- **Perspective (Vitamins/Minerals)**: Diversity of viewpoints and pros/cons analysis.
+- **Emotion (Fat)**: Emotional appeal and dramatic elements.
+- **Immediacy (Water)**: Freshness and urgency of the news.
 
-## 開発者向けセットアップ
+### 2.2 Personalization Engine (Filter Strength)
+The "Filter Strength" slider ($S \in [0, 1]$) controls the mixing ratio between minimizing semantic distance and maximizing serendipity.
+The feed generation algorithm selects $N$ articles based on the following ratio:
+- **Personalized Set** ($N \times S$): Retrieved via cosine similarity search between the User Vector and Article Vectors.
+- **Discovery Set** ($N \times (1-S)$): Retrieved based on chronological order (latest news) to ensure exposure to breaking topics.
+The two sets are interleaved to create a seamless feed.
 
-### 1. Supabase の設定
-1. [Supabase](https://supabase.com) でプロジェクトを作成
-2. `migrate_taxonomy.sql` および `migrate_m3.sql` を実行してテーブルと関数を作成
-3. Auth設定で Google Provider を有効化
+### 2.3 Topic Clustering (Grouping Threshold)
+To present diverse perspectives on the same topic, we implement a Greedy Clustering algorithm based on semantic similarity.
+- **Metric**: Cosine Similarity.
+- **Threshold** ($T$): User-adjustable parameter (default $0.92$).
+- **Logic**: For a given sorted list of articles, an article $d_j$ is grouped with a leading article $d_i$ if $Similarity(d_i, d_j) \ge T$.
 
-### 2. Cloudflare Workers のデプロイ
-1. `workers/article-processor` ディレクトリで `npx wrangler deploy` を実行
-2. Workers の環境変数に Supabase の API 情報を設定
+## 3. Technology Stack
 
-### 3. Web アプリケーションの起動
-1. `web` ディレクトリへ移動
-2. `.env.local` に必要な環境変数（Supabase, Groq等）を設定
-3. `npm install`
-4. `npm run dev`
+| Component | Technology | Description |
+|-----------|------------|-------------|
+| **Frontend Framework** | **Next.js 15** | App Router, Server Components, Edge Runtime |
+| **Styling** | **Tailwind CSS** | Utility-first CSS, Glassmorphism UI |
+| **Edge Computing** | **Cloudflare Workers** | Global low-latency execution |
+| **LLM Inference** | **Workers AI** | Llama-3-8b-Instruct, BAAI/bge-m3 |
+| **Database** | **Supabase** | PostgreSQL 15, pgvector extension |
+| **Auth** | **Supabase Auth** | Google OAuth integration |
 
-### 4. 記事収集スクリプト
-1. ルートディレクトリの `collector.py` を実行（または GitHub Actions で定期実行）
+## 4. Acknowledgments
 
-## 主要機能
+本研究は，科学研究費補助金（**JP23H00216**）ならびに JSTERATO（**JPMJER2502**）の支援のもと実施されている．
+また、ニュースソースとして **[CEEK.JP NEWS](https://news.ceek.jp/)** 様のRSSフィードを利用させていただいております。ここに記して感謝申し上げます。
 
-### ニュースフィード
-- **フィルタ強度設定**: パーソナライズ（個人化）の度合いをスライダーで調整
-- **まとめ強度設定**: 関連記事をどの程度厳密にグルーピングするかを調整（コサイン類似度）
-- **深掘り機能**: 記事の内容を AI が分析し、背景知識や関連情報を提示
+## 5. Disclaimer
 
-### ダッシュボード & 情報的健康
-- **カテゴリ分布**: 自分がどのジャンルの記事を多く読んでいるかを可視化
-- **時間軸分析**: 興味関心の移り変わりを期間別（週/月/3ヶ月）で確認
-
-## 免責事項
-本プロジェクトは研究・学習目的のプロトタイプです。RSSフィードの利用規約に従ってご利用ください。
+This project is a research prototype. Please verify the accuracy of the AI-generated analysis.
+Users should comply with the terms of service of the respective news sources.

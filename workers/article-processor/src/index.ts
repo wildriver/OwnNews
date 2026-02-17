@@ -19,7 +19,16 @@ interface CategorizationResult {
     id: string
     category_medium: string
     category_minor: string[]
+    fact_score: number
+    context_score: number
+    perspective_score: number
+    emotion_score: number
+    immediacy_score: number
 }
+
+// ... (existing code) ...
+
+
 
 export default {
     async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
@@ -78,25 +87,35 @@ export default {
             return
         }
 
-        // 3. Categorize (Llama 3)
-        // Construct a specific prompt for batch categorization
+        // 3. Categorize & Analyze Nutrients (Llama 3)
+        // Construct a specific prompt for batch categorization and nutrient scoring
         const prompt = `
-    You are a news categorization AI. 
-    Classify the following news articles into a "Medium Category" and extract "Minor Keywords".
-    
+    You are a professional news analyst. 
+    Analyze the following news articles to:
+    1. Classify them into a "Medium Category".
+    2. Extract "Minor Keywords".
+    3. Calculate "Nutrient Scores" (0-100) based on the 5 elements of news.
+
     Allowed Medium Categories: 政治, 経済, 国際, IT・テクノロジー, スポーツ, エンタメ, 科学, 社会, 地方, ビジネス, 生活, 環境, 文化, その他.
     
+    Nutrient Definitions:
+    - fact_score (Protein): Base on objective data, 5W1H transparency. High: Detailed stats/facts. Low: Vague rumors.
+    - context_score (Carbohydrate): Base on background info, history, "Why". High: Deep dive/Analysis. Low: Just what happened.
+    - perspective_score (Vit/Min): Base on multi-viewpoints. High: Pros/Cons, diverse opinions. Low: Single-sided.
+    - emotion_score (Fat): Base on emotional hook/drama. High: Heartwarming/Shocking. Low: Dry reporting.
+    - immediacy_score (Water): Base on freshness/urgency. High: Breaking news/Live. Low: Evergreen/History.
+    
     Input Articles:
-    ${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title })), null, 2)}
+    ${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, summary: a.summary })), null, 2)}
     
     Instructions:
-    1. Analyze each article title.
-    2. Assign a "Medium Category" from the allowed list.
-    3. Extract 2-5 "Minor Keywords" (important nouns).
+    1. Analyze each article title and summary.
+    2. Assign a "Medium Category" and "Minor Keywords".
+    3. Score each nutrient (0-100) as an integer.
     4. Output strictly a JSON list of objects.
-    5. JSON format: [{"id": "...", "category_medium": "...", "category_minor": ["...", "..."]}]
+    5. JSON format: [{"id": "...", "category_medium": "...", "category_minor": ["..."], "fact_score": 50, "context_score": 50, "perspective_score": 50, "emotion_score": 50, "immediacy_score": 50}]
     
-    Output strictly valid JSON. No markdown, no "Here is the JSON".
+    Output strictly valid JSON. No markdown.
     `
 
         let categoryMap: Record<string, CategorizationResult> = {}
@@ -146,14 +165,11 @@ export default {
                 embedding_m3: embeddings[index],
                 category_medium: catData.category_medium || a.category_medium, // Prefer new, fallback to old
                 category_minor: catData.category_minor || a.category_minor,
-                // Remove updated_at if it's in `a`? Supabase might handle it automatically or we might be sending old value.
-                // If we send old updated_at, it's fine. It's metadata. 
-                // If we want to update it, we can set it to new Date(). 
-                // But if the column doesn't exist, we should NOT include it.
-                // `a` comes from `select('*')`, so it only contains existing columns.
-                // If `updated_at` was not in `a`, `...a` won't have it.
-                // If we explicitly add it, we might error if column missing.
-                // Safest is to NOT add it explicitly.
+                fact_score: catData.fact_score ?? null,
+                context_score: catData.context_score ?? null,
+                perspective_score: catData.perspective_score ?? null,
+                emotion_score: catData.emotion_score ?? null,
+                immediacy_score: catData.immediacy_score ?? null,
             }
         })
 

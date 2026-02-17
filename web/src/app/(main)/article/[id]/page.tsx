@@ -8,15 +8,23 @@ import { DeepDiveDialog } from '@/components/deep-dive-dialog'
 import { Sparkles } from 'lucide-react'
 import { Article } from '@/lib/types'
 import { SafeImage } from '@/components/safe-image'
+import { FilterSlider } from '@/components/filter-slider'
+import { GroupingSlider } from '@/components/grouping-slider'
+import { ClientNutrientRadar } from '@/components/client-nutrient-radar'
 
 export const runtime = 'edge'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default async function ArticlePage({
     params,
+    searchParams,
 }: {
     params: Promise<{ id: string }>
+    searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
     const { id } = await params
+    const params_url = await searchParams
     const supabase = await createClient()
 
     const {
@@ -27,7 +35,6 @@ export default async function ArticlePage({
         redirect('/login')
     }
 
-    // Fetch article with taxonomy fields
     const { data: article, error } = await supabase
         .from('articles')
         .select('*, embedding_m3, category_medium, category_minor')
@@ -38,20 +45,41 @@ export default async function ArticlePage({
         notFound()
     }
 
+    // Fetch preferences from profile or URL
+    let groupingThreshold = 0.92
+    let filterStrength = 0.50
+
+    const { data: profile } = await supabase
+        .from('user_profile')
+        .select('grouping_threshold, filter_strength')
+        .eq('user_id', user.email)
+        .single()
+
+    const rawGrouping = typeof params_url?.grouping === 'string'
+        ? parseFloat(params_url.grouping)
+        : (profile?.grouping_threshold ?? 0.92)
+    groupingThreshold = Math.max(0.70, Math.min(0.99, rawGrouping || 0.92))
+
+    const rawStrength = typeof params_url?.strength === 'string'
+        ? parseFloat(params_url.strength)
+        : (profile?.filter_strength ?? 0.50)
+    filterStrength = Math.max(0, Math.min(1, rawStrength || 0.50))
+
     const categories = article.category ? article.category.split(',').filter((c: string) => c.trim()) : []
     const keywords: string[] = article.category_minor || []
 
     // Fetch related articles (sources) using BGE-M3 RPC
     const { data: related } = await supabase.rpc('match_articles_m3', {
         query_vector: article.embedding_m3,
-        match_count: 15
+        match_count: 100
     })
 
     const allMatches = (related || [])
         .filter((r: Article & { similarity: number }) => r.id !== article.id)
 
-    const sameGroup = allMatches.filter((r: Article & { similarity: number }) => r.similarity >= 0.90)
-    const similarArticles = allMatches.filter((r: Article & { similarity: number }) => r.similarity >= 0.75 && r.similarity < 0.90)
+    // Use dynamic grouping threshold
+    const sameGroup = allMatches.filter((r: Article & { similarity: number }) => r.similarity >= groupingThreshold)
+    const similarArticles = allMatches.filter((r: Article & { similarity: number }) => r.similarity >= groupingThreshold - 0.15 && r.similarity < groupingThreshold)
 
     // Fetch category-based related articles (same category_medium, different from vector matches)
     const vectorMatchIds = new Set(allMatches.map((r: Article) => r.id))
@@ -74,13 +102,18 @@ export default async function ArticlePage({
     return (
         <div className="min-h-screen bg-background text-foreground py-8 px-4">
             <div className="max-w-3xl mx-auto">
-                <header className="mb-6">
+                <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <Button variant="ghost" size="sm" asChild className="text-slate-400 hover:text-slate-200 pl-0">
                         <Link href="/">
                             <ArrowLeft className="w-4 h-4 mr-2" />
                             一覧に戻る
                         </Link>
                     </Button>
+
+                    <div className="flex flex-col md:flex-row gap-4 items-center w-full md:w-auto">
+                        <FilterSlider initialValue={filterStrength} />
+                        <GroupingSlider initialValue={groupingThreshold} />
+                    </div>
                 </header>
 
                 <article className="space-y-8">
@@ -152,6 +185,34 @@ export default async function ArticlePage({
                         </p>
                     </div>
 
+                    {/* Nutrient Radar */}
+                    {(article.fact_score !== undefined || article.fact_score > 0) && (
+                        <div className="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-sm">
+                            <h2 className="text-xl font-bold text-slate-200 mb-4 flex items-center gap-2">
+                                <span className="text-sky-400">⚡</span> ニュースの栄養素
+                            </h2>
+                            <p className="text-sm text-slate-400 mb-6">
+                                この記事に含まれる要素を5つの観点で分析しました。
+                            </p>
+                            <div className="h-[300px] w-full">
+                                <ClientNutrientRadar
+                                    fact={article.fact_score || 0}
+                                    context={article.context_score || 0}
+                                    perspective={article.perspective_score || 0}
+                                    emotion={article.emotion_score || 0}
+                                    immediacy={article.immediacy_score || 0}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4 text-xs text-slate-500 text-center">
+                                <div>事実: <span className="text-slate-300">{article.fact_score || 0}</span></div>
+                                <div>背景: <span className="text-slate-300">{article.context_score || 0}</span></div>
+                                <div>視点: <span className="text-slate-300">{article.perspective_score || 0}</span></div>
+                                <div>感情: <span className="text-slate-300">{article.emotion_score || 0}</span></div>
+                                <div>速報: <span className="text-slate-300">{article.immediacy_score || 0}</span></div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Main Source Button (Always Visible) */}
                     <div className="flex justify-center pt-4">
                         <Button variant="outline" size="lg" asChild className="bg-sky-500/10 border-sky-500/20 text-sky-400 hover:bg-sky-500/20 hover:text-sky-300 gap-2 w-full max-w-sm">
@@ -166,7 +227,7 @@ export default async function ArticlePage({
                     {sameGroup.length > 0 && (
                         <div className="space-y-4 pt-6">
                             <h3 className="text-lg font-bold text-slate-200 border-l-4 border-sky-500 pl-3">
-                                別の視点で読む ({sameGroup.length})
+                                別の視点で読む ({sameGroup.length}) <span className="text-xs font-normal text-slate-500 ml-2">しきい値: {groupingThreshold.toFixed(3)}</span>
                             </h3>
                             <div className="grid gap-3">
                                 {sameGroup.map((src: Article & { similarity: number }) => (

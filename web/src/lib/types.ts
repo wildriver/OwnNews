@@ -10,6 +10,13 @@ export interface Article {
     image_url?: string
     source?: string
     embedding?: number[] | string
+
+    // News Nutrients (0-100)
+    fact_score?: number
+    context_score?: number
+    perspective_score?: number
+    emotion_score?: number
+    immediacy_score?: number
 }
 
 export interface GroupedArticle extends Article {
@@ -26,6 +33,13 @@ export interface HealthStats {
     bias_level: string
     missing_categories: string[]
     total_viewed: number
+    nutrient_averages: {
+        fact: number
+        context: number
+        perspective: number
+        emotion: number
+        immediacy: number
+    }
 }
 
 export const ONBOARDING_CATEGORIES = [

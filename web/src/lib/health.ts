@@ -6,6 +6,11 @@ interface ArticleJoin {
     category: string | null
     category_medium: string | null
     category_minor: string[] | null
+    fact_score?: number
+    context_score?: number
+    perspective_score?: number
+    emotion_score?: number
+    immediacy_score?: number
 }
 
 interface InteractionWithArticle {
@@ -30,7 +35,12 @@ export async function getInformationHealth(
             articles (
                 category,
                 category_medium,
-                category_minor
+                category_minor,
+                fact_score,
+                context_score,
+                perspective_score,
+                emotion_score,
+                immediacy_score
             )
         `)
         .eq('user_id', userId)
@@ -47,6 +57,13 @@ export async function getInformationHealth(
     const allCats: string[] = []
     const allMediums: string[] = []
     const allKeywords: string[] = []
+
+    let totalFact = 0
+    let totalContext = 0
+    let totalPerspective = 0
+    let totalEmotion = 0
+    let totalImmediacy = 0
+    let nutrientCount = 0
 
     interactions.forEach((interaction) => {
         // Handle potential array or single object from join
@@ -71,6 +88,22 @@ export async function getInformationHealth(
                 articleData.category_minor.forEach((kw: string) => {
                     if (kw && kw.trim()) allKeywords.push(kw.trim())
                 })
+            }
+
+            // Nutrients - Only count if at least one score is non-zero (exclude unanalyzed articles)
+            const hasScore = (articleData.fact_score || 0) > 0 ||
+                (articleData.context_score || 0) > 0 ||
+                (articleData.perspective_score || 0) > 0 ||
+                (articleData.emotion_score || 0) > 0 ||
+                (articleData.immediacy_score || 0) > 0
+
+            if (hasScore && articleData.fact_score !== undefined && articleData.fact_score !== null) {
+                totalFact += articleData.fact_score
+                totalContext += articleData.context_score || 0
+                totalPerspective += articleData.perspective_score || 0
+                totalEmotion += articleData.emotion_score || 0
+                totalImmediacy += articleData.immediacy_score || 0
+                nutrientCount++
             }
         }
     })
@@ -143,7 +176,14 @@ export async function getInformationHealth(
         dominant_ratio: dominantRatio,
         bias_level: biasLevel,
         missing_categories: missingCategories,
-        total_viewed: total
+        total_viewed: total,
+        nutrient_averages: {
+            fact: nutrientCount > 0 ? Math.round(totalFact / nutrientCount) : 0,
+            context: nutrientCount > 0 ? Math.round(totalContext / nutrientCount) : 0,
+            perspective: nutrientCount > 0 ? Math.round(totalPerspective / nutrientCount) : 0,
+            emotion: nutrientCount > 0 ? Math.round(totalEmotion / nutrientCount) : 0,
+            immediacy: nutrientCount > 0 ? Math.round(totalImmediacy / nutrientCount) : 0,
+        }
     }
 }
 
@@ -158,6 +198,13 @@ function createEmptyStats(): HealthStats {
         bias_level: 'データ不足',
         missing_categories: ONBOARDING_CATEGORIES,
         total_viewed: 0,
+        nutrient_averages: {
+            fact: 0,
+            context: 0,
+            perspective: 0,
+            emotion: 0,
+            immediacy: 0
+        }
     }
 }
 
