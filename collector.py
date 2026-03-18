@@ -6,6 +6,7 @@ Categorization and Embedding are handled by Cloudflare Workers.
 
 import hashlib
 import os
+import re
 
 import feedparser
 import requests

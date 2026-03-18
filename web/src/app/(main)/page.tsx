@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { NewsGrid } from '@/components/news-grid'
 import { FilterSlider } from '@/components/filter-slider'
 import { GroupingSlider } from '@/components/grouping-slider'
@@ -29,6 +30,7 @@ export default async function Home({
   let error: Error | null = null
   let filterStrength = 0.5
   let groupingThreshold = 0.92
+  let categoryFilter: string | null = null
 
   try {
     const supabase = await createClient()
@@ -191,7 +193,18 @@ export default async function Home({
     const uniqueLatest = latestArticles.filter(a => !personalizedIds.has(a.id))
 
     // Interleave: personalized first, then latest
-    const merged = [...personalizedArticles, ...uniqueLatest].slice(0, totalTarget)
+    let merged = [...personalizedArticles, ...uniqueLatest].slice(0, totalTarget)
+
+    // 9.5. Apply category filter if specified
+    categoryFilter = typeof params?.category === 'string' ? params.category.trim() : null
+    if (categoryFilter) {
+      merged = merged.filter(a => {
+        if (a.category && a.category.split(',').some(c => c.trim() === categoryFilter)) return true
+        const artMedium = (a as unknown as Record<string, unknown>).category_medium as string | undefined
+        if (artMedium === categoryFilter) return true
+        return false
+      })
+    }
 
     // 10. Map embedding_m3 -> embedding for grouping, then group
     const articlesWithEmb = merged.map(a => ({
@@ -259,6 +272,21 @@ export default async function Home({
           </Suspense>
         </div>
       </header>
+
+      {categoryFilter && (
+        <div className="mb-6 flex items-center gap-2">
+          <span className="text-sm text-slate-400">フィルタ中:</span>
+          <span className="text-sm font-bold text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-full px-3 py-1">
+            {categoryFilter}
+          </span>
+          <Link
+            href="/"
+            className="text-xs text-slate-500 hover:text-red-400 transition-colors ml-2"
+          >
+            クリア
+          </Link>
+        </div>
+      )}
 
       <NewsGrid articles={articles || []} />
     </div>

@@ -13,9 +13,9 @@ RETURNS TABLE (
     published  text,
     category   text,
     image_url  text,
-    -- source     text,  -- Removed: column does not exist
     category_medium text,
     category_minor text[],
+    embedding_m3 vector(1024),
     fact_score int,
     context_score int,
     perspective_score int,
@@ -27,8 +27,9 @@ LANGUAGE sql STABLE
 AS $$
     SELECT
         a.id, a.title, a.link, a.summary, a.published, a.category,
-        a.image_url, -- a.source removed
+        a.image_url,
         a.category_medium, a.category_minor,
+        a.embedding_m3,
         a.fact_score, a.context_score, a.perspective_score, a.emotion_score, a.immediacy_score,
         1 - (a.embedding_m3 <=> query_vector) AS similarity
     FROM articles a
