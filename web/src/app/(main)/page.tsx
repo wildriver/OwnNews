@@ -1,12 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { NewsFeedClient } from '@/components/news-feed-client'
+import { BubbleFeedLayout } from '@/components/bubble-feed-layout'
 import { FilterSlider } from '@/components/filter-slider'
 import { groupSimilarArticles } from '@/lib/news'
 import { Article, GroupedArticle } from '@/lib/types'
 import { Suspense } from 'react'
 
 export const runtime = 'edge'
+
+// Similarity threshold: above = in-bubble, below = out-of-bubble
+const BUBBLE_THRESHOLD = 0.65
+// Max articles per zone
+const ZONE_SIZE = 15
 
 function parseVector(v: unknown): number[] | null {
   if (!v) return null
@@ -17,33 +22,6 @@ function parseVector(v: unknown): number[] | null {
   return null
 }
 
-// Round-robin diversify: pick articles evenly across categories
-function diversify(articles: Article[], targetCount: number): Article[] {
-  const byCategory: Record<string, Article[]> = {}
-  for (const a of articles) {
-    const primaryCat = (a.category || '').split(',')[0]?.trim() || 'その他'
-    if (!byCategory[primaryCat]) byCategory[primaryCat] = []
-    byCategory[primaryCat].push(a)
-  }
-  const groups = Object.values(byCategory)
-  const result: Article[] = []
-  let i = 0
-  while (result.length < targetCount) {
-    let added = false
-    for (const group of groups) {
-      if (group[i]) {
-        result.push(group[i])
-        added = true
-        if (result.length >= targetCount) break
-      }
-    }
-    if (!added) break
-    i++
-  }
-  return result
-}
-
-// Strip heavy embedding vectors before sending to client
 function stripEmbeddings(articles: GroupedArticle[]): GroupedArticle[] {
   return articles.map(a => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -71,10 +49,15 @@ export default async function Home({
   const hasDateFilter = !!(dateFrom || dateTo)
 
   let user = null
-  let articles: GroupedArticle[] = []
+  let inBubbleArticles: GroupedArticle[] = []
+  let outBubbleArticles: GroupedArticle[] = []
+  let fallbackArticles: GroupedArticle[] = []   // for category/date filter mode
+  let bubbleMode: 'vector' | 'category' | 'none' = 'none'
+  let userTopCats: string[] = []
   let error: Error | null = null
   let filterStrength = 0.5
-  const groupingThreshold = 0.92  // fixed — grouping slider removed
+
+  const groupingThreshold = 0.92
 
   try {
     const supabase = await createClient()
@@ -87,8 +70,7 @@ export default async function Home({
         const { data: profile } = await supabase
           .from('user_profile').select('filter_strength')
           .eq('user_id', user.email).single()
-        const savedStrength = profile?.filter_strength ?? 0.5
-        filterStrength = Math.max(0, Math.min(1, savedStrength))
+        filterStrength = Math.max(0, Math.min(1, profile?.filter_strength ?? 0.5))
       } else {
         filterStrength = Math.max(0, Math.min(1, parseFloat(params.strength) || 0.5))
       }
@@ -98,7 +80,7 @@ export default async function Home({
 
     const userEmail = user!.email || ''
 
-    // Interactions
+    // Interactions (for seen/dismissed dedup)
     const { data: interactions } = await supabase
       .from('user_interactions').select('article_id, interaction_type').eq('user_id', userEmail)
     const seenIds = new Set<string>()
@@ -108,25 +90,7 @@ export default async function Home({
       seenIds.add(i.article_id)
     }
 
-    // Disliked categories (skip for category filter mode)
-    let dislikedCategories: Record<string, number> = {}
-    if (dismissedIds.size > 0 && !selectedCategory) {
-      const { data: dismissed } = await supabase
-        .from('articles').select('category, category_medium').in('id', Array.from(dismissedIds))
-      const counts: Record<string, number> = {}
-      for (const a of (dismissed || [])) {
-        if (a.category_medium && a.category_medium !== 'その他') {
-          counts[a.category_medium] = (counts[a.category_medium] || 0) + 1
-        }
-        for (const c of (a.category || '').split(',')) {
-          const t = c.trim()
-          if (t) counts[t] = (counts[t] || 0) + 1
-        }
-      }
-      dislikedCategories = counts
-    }
-
-    // User vector (skip for category filter mode)
+    // User vector
     let userVector: number[] | null = null
     let hasM3Vector = false
     if (!selectedCategory) {
@@ -136,94 +100,139 @@ export default async function Home({
       hasM3Vector = !!parseVector(vd?.vector_m3)
     }
 
-    // Fetch 200 latest articles and diversify to 20 for initial display
-    // (avoids "all その他" problem caused by insertion order within same collected_at batch)
-    const INITIAL = 20
-    const FETCH_BUFFER = 200
-    // Disable personalization when date filter or category filter is active
-    const personalizedCount = (!selectedCategory && !hasDateFilter && userVector && hasM3Vector)
-      ? Math.max(0, Math.round(INITIAL * filterStrength))
-      : 0
-    const latestCount = INITIAL - personalizedCount
+    // Category reading history — always fetch for bubble classification
+    const { data: catHistory } = await supabase
+      .from('user_interactions')
+      .select('articles(category)')
+      .eq('user_id', userEmail)
+      .in('interaction_type', ['view', 'deep_dive'])
+      .limit(200)
 
-    const calcPenalty = (a: Article) => {
-      let p = 0
-      const m = (a as unknown as Record<string, unknown>).category_medium as string | undefined
-      if (m && dislikedCategories[m]) p += dislikedCategories[m] * 0.3
-      for (const c of (a.category || '').split(',')) {
+    const catFreq: Record<string, number> = {}
+    for (const row of (catHistory || [])) {
+      const art = Array.isArray(row.articles) ? row.articles[0] : row.articles
+      const cats = ((art as { category?: string } | null)?.category || '').split(',')
+      for (const c of cats) {
         const t = c.trim()
-        if (t && dislikedCategories[t]) p += dislikedCategories[t] * 0.2
+        if (t && t !== 'その他') catFreq[t] = (catFreq[t] || 0) + 1
       }
-      return Math.min(p, 1.0)
     }
+    userTopCats = Object.entries(catFreq).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => c)
 
-    // Personalized
-    let personalizedArticles: Article[] = []
-    if (personalizedCount > 0 && userVector && hasM3Vector) {
-      const { data: matched } = await supabase.rpc('match_articles_m3', {
-        query_vector: userVector,
-        match_count: personalizedCount + 20,
-      })
-      personalizedArticles = (matched || [])
-        .filter((a: Article) => !seenIds.has(a.id) && !dismissedIds.has(a.id))
-        .slice(0, personalizedCount)
-    }
-
-    // Latest (+ category filter + date filter)
-    let latestArticles: Article[] = []
-    if (latestCount > 0) {
+    // ======= FETCH STRATEGY =======
+    if (selectedCategory || hasDateFilter) {
+      // --- Category/date filter mode: simple list, no bubble split ---
       let query = supabase
         .from('articles')
         .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, embedding_m3, fact_score, context_score, perspective_score, emotion_score, immediacy_score')
         .order('collected_at', { ascending: false })
 
-      if (selectedCategory) {
-        query = query.like('category', `%${selectedCategory}%`)
-      }
-      if (dateFrom) {
-        // collected_at is timestamptz — filter by JST date (UTC+9)
-        query = query.gte('collected_at', `${dateFrom}T00:00:00+09:00`)
-      }
-      if (dateTo) {
-        query = query.lte('collected_at', `${dateTo}T23:59:59+09:00`)
-      }
-      if (selectedCategory || hasDateFilter) {
-        query = query.limit(INITIAL + 20)
-      } else {
-        // Fetch large buffer to enable category diversification
-        query = query.limit(FETCH_BUFFER)
-      }
+      if (selectedCategory) query = query.like('category', `%${selectedCategory}%`)
+      if (dateFrom) query = query.gte('collected_at', `${dateFrom}T00:00:00+09:00`)
+      if (dateTo) query = query.lte('collected_at', `${dateTo}T23:59:59+09:00`)
+      query = query.limit(60)
 
       const { data: raw } = await query
-      latestArticles = (raw || []).filter((a: Article) => !seenIds.has(a.id) && !dismissedIds.has(a.id))
-    }
+      const filtered = (raw || []).filter((a: Article) => !dismissedIds.has(a.id))
+      const withEmb = filtered.map(a => ({ ...a, embedding: (a as unknown as Record<string, unknown>).embedding_m3 as number[] | string | undefined }))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fallbackArticles = stripEmbeddings(groupSimilarArticles(withEmb as Article[], groupingThreshold) as any)
+      bubbleMode = 'none'
 
-    if (Object.keys(dislikedCategories).length > 0) {
-      latestArticles.sort((a, b) => calcPenalty(a) - calcPenalty(b))
-    }
+    } else if (userVector && hasM3Vector) {
+      // --- M3 vector mode: similarity-based bubble classification ---
+      bubbleMode = 'vector'
+      const outCount = Math.round(ZONE_SIZE * filterStrength)
 
-    const personalizedIds = new Set(personalizedArticles.map(a => a.id))
-    const uniqueLatest = latestArticles.filter(a => !personalizedIds.has(a.id))
+      const { data: matched } = await supabase.rpc('match_articles_m3', {
+        query_vector: userVector,
+        match_count: 200,
+      })
 
-    let merged: Article[]
-    if (selectedCategory || hasDateFilter) {
-      merged = uniqueLatest.slice(0, INITIAL)
+      const allMatched = (matched || []).filter((a: Article) => !seenIds.has(a.id) && !dismissedIds.has(a.id))
+
+      type MatchedArticle = Article & { similarity: number }
+      const inRaw: MatchedArticle[] = allMatched
+        .filter((a: MatchedArticle) => (a.similarity ?? 0) >= BUBBLE_THRESHOLD)
+        .slice(0, ZONE_SIZE)
+        .map((a: MatchedArticle) => ({ ...a, inBubble: true, bubbleScore: a.similarity }))
+
+      const inIds = new Set(inRaw.map((a: Article) => a.id))
+      const outRaw: MatchedArticle[] = allMatched
+        .filter((a: MatchedArticle) => (a.similarity ?? 0) < BUBBLE_THRESHOLD && !inIds.has(a.id))
+        .slice(0, outCount)
+        .map((a: MatchedArticle) => ({ ...a, inBubble: false, bubbleScore: a.similarity }))
+
+      const group = (articles: Article[]) => {
+        const withEmb = articles.map(a => ({ ...a, embedding: (a as unknown as Record<string, unknown>).embedding_m3 as number[] | string | undefined }))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return stripEmbeddings(groupSimilarArticles(withEmb as Article[], groupingThreshold) as any)
+      }
+      inBubbleArticles = group(inRaw as unknown as Article[])
+      outBubbleArticles = group(outRaw as unknown as Article[])
+
+    } else if (userTopCats.length >= 2) {
+      // --- Category-based bubble classification (no M3 vector) ---
+      bubbleMode = 'category'
+      const outCount = Math.round(ZONE_SIZE * filterStrength)
+
+      // In-bubble: recent articles from user's top categories
+      const inCatFilter = userTopCats.map(c => `category.like.%${c}%`).join(',')
+      const { data: inRaw } = await supabase
+        .from('articles')
+        .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, embedding_m3, fact_score, context_score, perspective_score, emotion_score, immediacy_score')
+        .or(inCatFilter)
+        .order('collected_at', { ascending: false })
+        .limit(60)
+
+      const inFiltered = (inRaw || [])
+        .filter((a: Article) => !seenIds.has(a.id) && !dismissedIds.has(a.id))
+        .slice(0, ZONE_SIZE)
+        .map(a => ({ ...a, inBubble: true, bubbleScore: 0.8 }))
+
+      // Out-of-bubble: recent articles NOT from user's top categories
+      let outBubbleRaw: GroupedArticle[] = []
+      if (outCount > 0) {
+        const { data: recentRaw } = await supabase
+          .from('articles')
+          .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, embedding_m3, fact_score, context_score, perspective_score, emotion_score, immediacy_score')
+          .order('collected_at', { ascending: false })
+          .limit(200)
+
+        const inIds = new Set(inFiltered.map(a => a.id))
+        const outFiltered = (recentRaw || [])
+          .filter((a: Article) => {
+            if (seenIds.has(a.id) || dismissedIds.has(a.id) || inIds.has(a.id)) return false
+            const cats = (a.category || '').split(',').map(c => c.trim())
+            return !cats.some(c => userTopCats.includes(c))
+          })
+          .slice(0, outCount)
+          .map(a => ({ ...a, inBubble: false, bubbleScore: 0.3 }))
+
+        const withEmb = outFiltered.map(a => ({ ...a, embedding: (a as unknown as Record<string, unknown>).embedding_m3 as number[] | string | undefined }))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        outBubbleRaw = stripEmbeddings(groupSimilarArticles(withEmb as Article[], groupingThreshold) as any)
+      }
+
+      const withEmb = inFiltered.map(a => ({ ...a, embedding: (a as unknown as Record<string, unknown>).embedding_m3 as number[] | string | undefined }))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      inBubbleArticles = stripEmbeddings(groupSimilarArticles(withEmb as Article[], groupingThreshold) as any)
+      outBubbleArticles = outBubbleRaw
+
     } else {
-      // Diversify latest articles across categories before merging with personalized
-      const diverseLatest = diversify(uniqueLatest, latestCount)
-      merged = [...personalizedArticles, ...diverseLatest].slice(0, INITIAL)
+      // --- No data: show latest articles as fallback ---
+      bubbleMode = 'none'
+      const { data: raw } = await supabase
+        .from('articles')
+        .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, embedding_m3, fact_score, context_score, perspective_score, emotion_score, immediacy_score')
+        .order('collected_at', { ascending: false })
+        .limit(100)
+
+      const filtered = (raw || []).filter((a: Article) => !dismissedIds.has(a.id)).slice(0, 20)
+      const withEmb = filtered.map(a => ({ ...a, embedding: (a as unknown as Record<string, unknown>).embedding_m3 as number[] | string | undefined }))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fallbackArticles = stripEmbeddings(groupSimilarArticles(withEmb as Article[], groupingThreshold) as any)
     }
-
-    // Group similar articles
-    const withEmb = merged.map(a => ({
-      ...a,
-      embedding: (a as unknown as Record<string, unknown>).embedding_m3 as number[] | string | undefined,
-    }))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const grouped = groupSimilarArticles(withEmb as Article[], groupingThreshold) as any
-
-    // Strip embedding vectors — they're large and not needed on the client
-    articles = stripEmbeddings(grouped)
 
   } catch (e: unknown) {
     console.error('Home page error:', e)
@@ -252,15 +261,20 @@ export default async function Home({
           <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-400">
             Your Feed
           </h1>
-          <p className="text-slate-400">AIによって厳選された最新ニュース</p>
+          <p className="text-slate-400">フィルタバブルを意識しながらニュースを読もう</p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <Suspense fallback={null}><FilterSlider initialValue={filterStrength} /></Suspense>
         </div>
       </header>
 
-      <NewsFeedClient
-        articles={articles || []}
+      <BubbleFeedLayout
+        inBubbleArticles={inBubbleArticles}
+        outBubbleArticles={outBubbleArticles}
+        fallbackArticles={fallbackArticles}
+        bubbleMode={bubbleMode}
+        userTopCats={userTopCats}
+        filterStrength={filterStrength}
         selectedCategory={selectedCategory}
         dateFrom={dateFrom}
         dateTo={dateTo}

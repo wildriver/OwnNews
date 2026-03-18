@@ -22,7 +22,7 @@ export default async function ArticlePage({
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
     const { id } = await params
-    const params_url = await searchParams
+    void searchParams  // unused but required by Next.js page signature
     const supabase = await createClient()
 
     const {

@@ -56,26 +56,26 @@ export function FilterSlider({ initialValue }: FilterSliderProps) {
     }, [router])
 
     const getLabel = () => {
-        if (value <= 0.15) return 'ニュートラル'
-        if (value <= 0.4) return 'やや探索型'
-        if (value <= 0.6) return 'バランス'
-        if (value <= 0.85) return 'やや個人化'
-        return 'パーソナライズ'
+        if (value <= 0.1) return 'バブル内のみ'
+        if (value <= 0.35) return 'ほぼバブル内'
+        if (value <= 0.65) return 'バランス'
+        if (value <= 0.85) return 'バブル外多め'
+        return '広く見る'
     }
 
     const getColor = () => {
-        if (value <= 0.3) return 'from-emerald-400 to-cyan-400'
-        if (value <= 0.7) return 'from-sky-400 to-indigo-400'
-        return 'from-indigo-400 to-violet-400'
+        if (value <= 0.3) return 'from-sky-400 to-indigo-400'
+        if (value <= 0.7) return 'from-indigo-400 to-amber-400'
+        return 'from-amber-400 to-emerald-400'
     }
 
     return (
         <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3 backdrop-blur-sm w-full md:w-auto">
-            <SlidersHorizontal className={`w-4 h-4 flex-shrink-0 ${isUpdating ? 'text-sky-400 animate-pulse' : 'text-slate-400'}`} />
+            <SlidersHorizontal className={`w-4 h-4 flex-shrink-0 ${isUpdating ? 'text-amber-400 animate-pulse' : 'text-slate-400'}`} />
 
             <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
                 <div className="flex justify-between items-center">
-                    <span className="text-[11px] text-slate-500">フィルタ強度</span>
+                    <span className="text-[11px] text-slate-500">バブルの外へ</span>
                     <span className={`text-[11px] font-bold text-transparent bg-clip-text bg-gradient-to-r ${getColor()}`}>
                         {isUpdating ? '更新中…' : getLabel()}
                     </span>
@@ -91,14 +91,14 @@ export function FilterSlider({ initialValue }: FilterSliderProps) {
                         onChange={(e) => handleChange(parseFloat(e.target.value))}
                         className="filter-slider w-full h-1.5 appearance-none rounded-full cursor-pointer"
                         style={{
-                            background: `linear-gradient(to right, #34d399 0%, #38bdf8 50%, #818cf8 100%)`,
+                            background: `linear-gradient(to right, #38bdf8 0%, #818cf8 40%, #f59e0b 70%, #34d399 100%)`,
                         }}
                     />
                 </div>
 
                 <div className="flex justify-between text-[9px] text-slate-600">
-                    <span>探索</span>
-                    <span>個人化</span>
+                    <span>🫧 バブル内</span>
+                    <span>🌍 広く見る</span>
                 </div>
             </div>
         </div>

@@ -17,6 +17,10 @@ export interface Article {
     perspective_score?: number
     emotion_score?: number
     immediacy_score?: number
+
+    // Filter bubble classification
+    inBubble?: boolean    // true = user's bubble, false = outside bubble
+    bubbleScore?: number  // similarity (0-1) or category-based score
 }
 
 export interface GroupedArticle extends Article {

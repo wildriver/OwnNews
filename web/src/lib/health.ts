@@ -134,14 +134,15 @@ export async function getInformationHealth(
         .slice(0, 10)
         .map(([keyword, count]) => ({ keyword, count }))
 
-    const total = allCats.length
+    const total = interactions.length  // 記事数（カテゴリトークン数ではなく）
+    const catTotal = allCats.length    // カテゴリ分布計算用
     const nCategories = Object.keys(distribution).length
     let diversityScore = 0
 
     if (nCategories > 1) {
         let entropy = 0
         Object.values(distribution).forEach((count) => {
-            const p = count / total
+            const p = count / catTotal
             entropy -= p * Math.log2(p)
         })
         const maxEntropy = Math.log2(nCategories)
@@ -158,7 +159,7 @@ export async function getInformationHealth(
         }
     })
 
-    const dominantRatio = total > 0 ? parseFloat((maxCount / total).toFixed(2)) : 0
+    const dominantRatio = catTotal > 0 ? parseFloat((maxCount / catTotal).toFixed(2)) : 0
 
     let biasLevel = 'バランス良好'
     if (dominantRatio > 0.6) biasLevel = '偏食（強）'
