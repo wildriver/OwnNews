@@ -12,10 +12,11 @@ import { GroupedArticle } from '@/lib/types'
 
 interface ArticleCardProps {
     article: GroupedArticle
+    outsideBubble?: boolean
     onCategoryClick?: (category: string) => void
 }
 
-export function ArticleCard({ article, onCategoryClick }: ArticleCardProps) {
+export function ArticleCard({ article, outsideBubble, onCategoryClick }: ArticleCardProps) {
     const [isVisible, setIsVisible] = useState(true)
     const [expanded, setExpanded] = useState(false)
     const [imageLoaded, setImageLoaded] = useState(true) // Start visible to avoid hydration mismatch
@@ -54,8 +55,19 @@ export function ArticleCard({ article, onCategoryClick }: ArticleCardProps) {
 
     const hasImage = article.image_url && !imageError
 
+    const cardClass = outsideBubble
+        ? "h-full border-amber-500/15 bg-amber-950/10 backdrop-blur-sm hover:border-amber-500/30 hover:shadow-lg hover:shadow-amber-900/10 transition-all duration-300 group flex flex-col overflow-hidden relative opacity-80 hover:opacity-100"
+        : "h-full border-white/10 bg-white/5 backdrop-blur-sm hover:border-sky-500/30 hover:shadow-lg hover:shadow-sky-900/10 transition-all duration-300 group flex flex-col overflow-hidden relative"
+
     return (
-        <Card className="h-full border-white/10 bg-white/5 backdrop-blur-sm hover:border-sky-500/30 hover:shadow-lg hover:shadow-sky-900/10 transition-all duration-300 group flex flex-col overflow-hidden relative">
+        <Card className={cardClass}>
+            {outsideBubble && (
+                <div className="absolute top-2 left-2 z-10">
+                    <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[9px] px-1.5 py-0 h-4">
+                        🌍 バブル外
+                    </Badge>
+                </div>
+            )}
             <div className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                 <Button
                     variant="ghost"

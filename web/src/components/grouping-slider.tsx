@@ -3,7 +3,9 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Layers } from 'lucide-react'
-import { updateGroupingThreshold } from '@/app/actions'
+// grouping slider not used (threshold is fixed at 0.92)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const updateGroupingThreshold = async (v: number): Promise<void> => {}
 
 interface GroupingSliderProps {
     initialValue: number
