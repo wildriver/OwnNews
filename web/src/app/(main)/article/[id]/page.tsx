@@ -8,8 +8,6 @@ import { DeepDiveDialog } from '@/components/deep-dive-dialog'
 import { Sparkles } from 'lucide-react'
 import { Article } from '@/lib/types'
 import { SafeImage } from '@/components/safe-image'
-import { FilterSlider } from '@/components/filter-slider'
-import { GroupingSlider } from '@/components/grouping-slider'
 import { ClientNutrientRadar } from '@/components/client-nutrient-radar'
 
 export const runtime = 'edge'
@@ -45,58 +43,49 @@ export default async function ArticlePage({
         notFound()
     }
 
-    // Fetch preferences from profile or URL
-    let groupingThreshold = 0.92
-    let filterStrength = 0.50
-
-    const { data: profile } = await supabase
-        .from('user_profile')
-        .select('grouping_threshold, filter_strength')
-        .eq('user_id', user.email)
-        .single()
-
-    const rawGrouping = typeof params_url?.grouping === 'string'
-        ? parseFloat(params_url.grouping)
-        : (profile?.grouping_threshold ?? 0.92)
-    groupingThreshold = Math.max(0.70, Math.min(0.99, rawGrouping || 0.92))
-
-    const rawStrength = typeof params_url?.strength === 'string'
-        ? parseFloat(params_url.strength)
-        : (profile?.filter_strength ?? 0.50)
-    filterStrength = Math.max(0, Math.min(1, rawStrength || 0.50))
+    const groupingThreshold = 0.92  // fixed — grouping slider removed
 
     const categories = article.category ? article.category.split(',').filter((c: string) => c.trim()) : []
     const keywords: string[] = article.category_minor || []
 
-    // Fetch related articles (sources) using BGE-M3 RPC
-    const { data: related } = await supabase.rpc('match_articles_m3', {
-        query_vector: article.embedding_m3,
-        match_count: 100
-    })
+    // Fetch related articles via BGE-M3 RPC (only if embedding exists)
+    let sameGroup: (Article & { similarity: number })[] = []
+    let similarArticles: (Article & { similarity: number })[] = []
+    let vectorMatchIds = new Set<string>()
 
-    const allMatches = (related || [])
-        .filter((r: Article & { similarity: number }) => r.id !== article.id)
+    if (article.embedding_m3) {
+        const { data: related } = await supabase.rpc('match_articles_m3', {
+            query_vector: article.embedding_m3,
+            match_count: 20
+        })
+        const allMatches = (related || [])
+            .filter((r: Article & { similarity: number }) => r.id !== article.id)
+        vectorMatchIds = new Set(allMatches.map((r: Article) => r.id))
+        sameGroup = allMatches
+            .filter((r: Article & { similarity: number }) => r.similarity >= groupingThreshold)
+            .slice(0, 3)
+        similarArticles = allMatches
+            .filter((r: Article & { similarity: number }) => r.similarity >= groupingThreshold - 0.15 && r.similarity < groupingThreshold)
+            .slice(0, 3)
+    }
 
-    // Use dynamic grouping threshold
-    const sameGroup = allMatches.filter((r: Article & { similarity: number }) => r.similarity >= groupingThreshold)
-    const similarArticles = allMatches.filter((r: Article & { similarity: number }) => r.similarity >= groupingThreshold - 0.15 && r.similarity < groupingThreshold)
-
-    // Fetch category-based related articles (same category_medium, different from vector matches)
-    const vectorMatchIds = new Set(allMatches.map((r: Article) => r.id))
+    // Category-based related articles — use RSS category field (not category_medium which is broken)
     let categoryArticles: Article[] = []
+    const articleCategories = (article.category || '').split(',').map((c: string) => c.trim()).filter(Boolean)
+    const primaryCategory = articleCategories.find((c: string) => c !== 'その他') || articleCategories[0]
 
-    if (article.category_medium && article.category_medium !== 'その他') {
+    if (primaryCategory && primaryCategory !== 'その他') {
         const { data: catRelated } = await supabase
             .from('articles')
-            .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source')
-            .eq('category_medium', article.category_medium)
+            .select('id, title, link, summary, published, category, image_url, source')
+            .like('category', `%${primaryCategory}%`)
             .neq('id', article.id)
-            .order('published', { ascending: false })
-            .limit(8)
+            .order('collected_at', { ascending: false })
+            .limit(10)
 
         categoryArticles = (catRelated || [])
             .filter((r: Article) => !vectorMatchIds.has(r.id))
-            .slice(0, 4)
+            .slice(0, 3)
     }
 
     return (
@@ -110,10 +99,6 @@ export default async function ArticlePage({
                         </Link>
                     </Button>
 
-                    <div className="flex flex-col md:flex-row gap-4 items-center w-full md:w-auto">
-                        <FilterSlider initialValue={filterStrength} />
-                        <GroupingSlider initialValue={groupingThreshold} />
-                    </div>
                 </header>
 
                 <article className="space-y-8">
@@ -186,32 +171,48 @@ export default async function ArticlePage({
                     </div>
 
                     {/* Nutrient Radar */}
-                    {(article.fact_score !== undefined || article.fact_score > 0) && (
-                        <div className="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-sm">
-                            <h2 className="text-xl font-bold text-slate-200 mb-4 flex items-center gap-2">
-                                <span className="text-sky-400">⚡</span> ニュースの栄養素
-                            </h2>
-                            <p className="text-sm text-slate-400 mb-6">
-                                この記事に含まれる要素を5つの観点で分析しました。
-                            </p>
-                            <div className="h-[300px] w-full">
-                                <ClientNutrientRadar
-                                    fact={article.fact_score || 0}
-                                    context={article.context_score || 0}
-                                    perspective={article.perspective_score || 0}
-                                    emotion={article.emotion_score || 0}
-                                    immediacy={article.immediacy_score || 0}
-                                />
+                    {(() => {
+                        const f = article.fact_score ?? 0
+                        const c = article.context_score ?? 0
+                        const p = article.perspective_score ?? 0
+                        const e = article.emotion_score ?? 0
+                        const i = article.immediacy_score ?? 0
+                        const hasData = f > 0 || c > 0 || p > 0 || e > 0 || i > 0
+                        return (
+                            <div className="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-sm">
+                                <h2 className="text-xl font-bold text-slate-200 mb-4 flex items-center gap-2">
+                                    <span className="text-sky-400">⚡</span> ニュースの栄養素
+                                </h2>
+                                {hasData ? (
+                                    <>
+                                        <p className="text-sm text-slate-400 mb-6">
+                                            この記事に含まれる要素を5つの観点で分析しました。
+                                        </p>
+                                        <div className="h-[300px] w-full">
+                                            <ClientNutrientRadar
+                                                fact={f}
+                                                context={c}
+                                                perspective={p}
+                                                emotion={e}
+                                                immediacy={i}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4 text-xs text-slate-500 text-center">
+                                            <div>事実: <span className="text-slate-300">{f}</span></div>
+                                            <div>背景: <span className="text-slate-300">{c}</span></div>
+                                            <div>視点: <span className="text-slate-300">{p}</span></div>
+                                            <div>感情: <span className="text-slate-300">{e}</span></div>
+                                            <div>速報: <span className="text-slate-300">{i}</span></div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-slate-500 italic">
+                                        この記事はまだ栄養素が分析されていません。
+                                    </p>
+                                )}
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4 text-xs text-slate-500 text-center">
-                                <div>事実: <span className="text-slate-300">{article.fact_score || 0}</span></div>
-                                <div>背景: <span className="text-slate-300">{article.context_score || 0}</span></div>
-                                <div>視点: <span className="text-slate-300">{article.perspective_score || 0}</span></div>
-                                <div>感情: <span className="text-slate-300">{article.emotion_score || 0}</span></div>
-                                <div>速報: <span className="text-slate-300">{article.immediacy_score || 0}</span></div>
-                            </div>
-                        </div>
-                    )}
+                        )
+                    })()}
 
                     {/* Main Source Button (Always Visible) */}
                     <div className="flex justify-center pt-4">
@@ -279,7 +280,7 @@ export default async function ArticlePage({
                     {categoryArticles.length > 0 && (
                         <div className="space-y-4 pt-6">
                             <h3 className="text-lg font-bold text-emerald-400 border-l-4 border-emerald-500 pl-3">
-                                「{article.category_medium}」の他の記事
+                                「{primaryCategory}」の他の記事
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {categoryArticles.map((src: Article) => (

@@ -1,16 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { NewsGrid } from '@/components/news-grid'
+import { NewsFeedClient } from '@/components/news-feed-client'
 import { FilterSlider } from '@/components/filter-slider'
-import { GroupingSlider } from '@/components/grouping-slider'
 import { groupSimilarArticles } from '@/lib/news'
 import { Article, GroupedArticle } from '@/lib/types'
 import { Suspense } from 'react'
 
 export const runtime = 'edge'
 
-// Parse vector from Supabase (can be string or array)
 function parseVector(v: unknown): number[] | null {
   if (!v) return null
   if (typeof v === 'string') {
@@ -20,239 +17,234 @@ function parseVector(v: unknown): number[] | null {
   return null
 }
 
+// Round-robin diversify: pick articles evenly across categories
+function diversify(articles: Article[], targetCount: number): Article[] {
+  const byCategory: Record<string, Article[]> = {}
+  for (const a of articles) {
+    const primaryCat = (a.category || '').split(',')[0]?.trim() || 'その他'
+    if (!byCategory[primaryCat]) byCategory[primaryCat] = []
+    byCategory[primaryCat].push(a)
+  }
+  const groups = Object.values(byCategory)
+  const result: Article[] = []
+  let i = 0
+  while (result.length < targetCount) {
+    let added = false
+    for (const group of groups) {
+      if (group[i]) {
+        result.push(group[i])
+        added = true
+        if (result.length >= targetCount) break
+      }
+    }
+    if (!added) break
+    i++
+  }
+  return result
+}
+
+// Strip heavy embedding vectors before sending to client
+function stripEmbeddings(articles: GroupedArticle[]): GroupedArticle[] {
+  return articles.map(a => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { embedding_m3, embedding, ...rest } = a as unknown as Record<string, unknown>
+    return {
+      ...rest,
+      related: a.related?.map(r => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { embedding_m3: _e, embedding: _em, ...rRest } = r as unknown as Record<string, unknown>
+        return rRest as unknown as Article
+      }),
+    } as GroupedArticle
+  })
+}
+
 export default async function Home({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
+  const params = await searchParams
+  const selectedCategory = typeof params?.category === 'string' ? params.category.trim() : null
+  const dateFrom = typeof params?.dateFrom === 'string' ? params.dateFrom.trim() : null
+  const dateTo = typeof params?.dateTo === 'string' ? params.dateTo.trim() : null
+  const hasDateFilter = !!(dateFrom || dateTo)
+
   let user = null
   let articles: GroupedArticle[] = []
   let error: Error | null = null
   let filterStrength = 0.5
-  let groupingThreshold = 0.92
-  let categoryFilter: string | null = null
+  const groupingThreshold = 0.92  // fixed — grouping slider removed
 
   try {
     const supabase = await createClient()
-    const params = await searchParams
 
-    // Get user session safely
     const { data: userData, error: authError } = await supabase.auth.getUser()
-    if (authError) {
-      console.log('Auth check failed:', authError.message)
-      user = null
-    } else {
-      user = userData.user
-    }
+    if (authError) { user = null } else { user = userData.user }
 
     if (user) {
-      // Fetch saved preferences if no params
-      let savedStrength: number | null = null
-      let savedGrouping: number | null = null
-
-      const needsProfileFetch = !params || (typeof params.strength !== 'string' || typeof params.grouping !== 'string')
-
-      if (needsProfileFetch) {
+      if (!params || typeof params.strength !== 'string') {
         const { data: profile } = await supabase
-          .from('user_profile')
-          .select('*')
-          .eq('user_id', user.email)
-          .single()
-        savedStrength = profile?.filter_strength ?? null
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        savedGrouping = (profile as any)?.grouping_threshold ?? null
+          .from('user_profile').select('filter_strength')
+          .eq('user_id', user.email).single()
+        const savedStrength = profile?.filter_strength ?? 0.5
+        filterStrength = Math.max(0, Math.min(1, savedStrength))
+      } else {
+        filterStrength = Math.max(0, Math.min(1, parseFloat(params.strength) || 0.5))
       }
-
-      // Determine final strength: URL > Saved > Default
-      const rawStrength = typeof params?.strength === 'string'
-        ? parseFloat(params.strength)
-        : (savedStrength ?? 0.5)
-      filterStrength = Math.max(0, Math.min(1, rawStrength || 0.5))
-
-      // Determine final grouping threshold: URL > Saved > Default (0.92)
-      const rawGrouping = typeof params?.grouping === 'string'
-        ? parseFloat(params.grouping)
-        : (savedGrouping ?? 0.92)
-      groupingThreshold = Math.max(0.70, Math.min(0.99, rawGrouping || 0.92))
     }
 
-    if (!user) {
-      redirect('/login')
-    }
+    if (!user) redirect('/login')
 
-    const userEmail = user.email || ''
+    const userEmail = user!.email || ''
 
-    // 1. Get ALL user interactions (view, not_interested)
+    // Interactions
     const { data: interactions } = await supabase
-      .from('user_interactions')
-      .select('article_id, interaction_type')
-      .eq('user_id', userEmail)
-
+      .from('user_interactions').select('article_id, interaction_type').eq('user_id', userEmail)
     const seenIds = new Set<string>()
     const dismissedIds = new Set<string>()
-
     for (const i of (interactions || [])) {
-      if (i.interaction_type === 'not_interested') {
-        dismissedIds.add(i.article_id)
-      }
+      if (i.interaction_type === 'not_interested') dismissedIds.add(i.article_id)
       seenIds.add(i.article_id)
     }
 
-    // 2. Learn disliked categories from dismissed articles
+    // Disliked categories (skip for category filter mode)
     let dislikedCategories: Record<string, number> = {}
-    if (dismissedIds.size > 0) {
-      const { data: dismissedArticles } = await supabase
-        .from('articles')
-        .select('category, category_medium')
-        .in('id', Array.from(dismissedIds))
-
-      const catCounts: Record<string, number> = {}
-      for (const a of (dismissedArticles || [])) {
+    if (dismissedIds.size > 0 && !selectedCategory) {
+      const { data: dismissed } = await supabase
+        .from('articles').select('category, category_medium').in('id', Array.from(dismissedIds))
+      const counts: Record<string, number> = {}
+      for (const a of (dismissed || [])) {
         if (a.category_medium && a.category_medium !== 'その他') {
-          catCounts[a.category_medium] = (catCounts[a.category_medium] || 0) + 1
+          counts[a.category_medium] = (counts[a.category_medium] || 0) + 1
         }
-        if (a.category) {
-          for (const c of a.category.split(',')) {
-            const trimmed = c.trim()
-            if (trimmed) {
-              catCounts[trimmed] = (catCounts[trimmed] || 0) + 1
-            }
-          }
+        for (const c of (a.category || '').split(',')) {
+          const t = c.trim()
+          if (t) counts[t] = (counts[t] || 0) + 1
         }
       }
-      dislikedCategories = catCounts
+      dislikedCategories = counts
     }
 
-    // 3. Try to get user vector for personalization
-    const { data: vectorData } = await supabase
-      .from('user_vectors')
-      .select('vector_m3, vector')
-      .eq('user_id', userEmail)
-      .single()
+    // User vector (skip for category filter mode)
+    let userVector: number[] | null = null
+    let hasM3Vector = false
+    if (!selectedCategory) {
+      const { data: vd } = await supabase
+        .from('user_vectors').select('vector_m3, vector').eq('user_id', userEmail).single()
+      userVector = parseVector(vd?.vector_m3) || parseVector(vd?.vector)
+      hasM3Vector = !!parseVector(vd?.vector_m3)
+    }
 
-    const userVector = parseVector(vectorData?.vector_m3) || parseVector(vectorData?.vector)
-    const hasM3Vector = !!parseVector(vectorData?.vector_m3)
-
-    // 4. Calculate blend counts
-    const totalTarget = 80
-    const personalizedCount = userVector && hasM3Vector
-      ? Math.max(0, Math.round(totalTarget * filterStrength))
+    // Fetch 200 latest articles and diversify to 20 for initial display
+    // (avoids "all その他" problem caused by insertion order within same collected_at batch)
+    const INITIAL = 20
+    const FETCH_BUFFER = 200
+    // Disable personalization when date filter or category filter is active
+    const personalizedCount = (!selectedCategory && !hasDateFilter && userVector && hasM3Vector)
+      ? Math.max(0, Math.round(INITIAL * filterStrength))
       : 0
-    const latestCount = totalTarget - personalizedCount
+    const latestCount = INITIAL - personalizedCount
 
-    // 5. Downrank function: penalize articles in disliked categories
-    const calcPenalty = (article: Article): number => {
-      let penalty = 0
-      const artMedium = (article as unknown as Record<string, unknown>).category_medium as string | undefined
-      if (artMedium && dislikedCategories[artMedium]) {
-        penalty += dislikedCategories[artMedium] * 0.3
+    const calcPenalty = (a: Article) => {
+      let p = 0
+      const m = (a as unknown as Record<string, unknown>).category_medium as string | undefined
+      if (m && dislikedCategories[m]) p += dislikedCategories[m] * 0.3
+      for (const c of (a.category || '').split(',')) {
+        const t = c.trim()
+        if (t && dislikedCategories[t]) p += dislikedCategories[t] * 0.2
       }
-      if (article.category) {
-        for (const c of article.category.split(',')) {
-          const trimmed = c.trim()
-          if (trimmed && dislikedCategories[trimmed]) {
-            penalty += dislikedCategories[trimmed] * 0.2
-          }
-        }
-      }
-      return Math.min(penalty, 1.0) // cap at 1.0
+      return Math.min(p, 1.0)
     }
 
-    // 6. Fetch personalized articles (if user vector exists and is M3)
+    // Personalized
     let personalizedArticles: Article[] = []
     if (personalizedCount > 0 && userVector && hasM3Vector) {
       const { data: matched } = await supabase.rpc('match_articles_m3', {
         query_vector: userVector,
-        match_count: personalizedCount + 30,
+        match_count: personalizedCount + 20,
       })
       personalizedArticles = (matched || [])
         .filter((a: Article) => !seenIds.has(a.id) && !dismissedIds.has(a.id))
         .slice(0, personalizedCount)
     }
 
-    // 7. Fetch latest articles (neutral)
+    // Latest (+ category filter + date filter)
     let latestArticles: Article[] = []
     if (latestCount > 0) {
-      const { data: articlesRaw } = await supabase
+      let query = supabase
         .from('articles')
         .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, embedding_m3, fact_score, context_score, perspective_score, emotion_score, immediacy_score')
         .order('collected_at', { ascending: false })
-        .limit(latestCount + 60)
 
-      latestArticles = (articlesRaw || [])
-        .filter((a: Article) => !seenIds.has(a.id) && !dismissedIds.has(a.id))
+      if (selectedCategory) {
+        query = query.like('category', `%${selectedCategory}%`)
+      }
+      if (dateFrom) {
+        // collected_at is timestamptz — filter by JST date (UTC+9)
+        query = query.gte('collected_at', `${dateFrom}T00:00:00+09:00`)
+      }
+      if (dateTo) {
+        query = query.lte('collected_at', `${dateTo}T23:59:59+09:00`)
+      }
+      if (selectedCategory || hasDateFilter) {
+        query = query.limit(INITIAL + 20)
+      } else {
+        // Fetch large buffer to enable category diversification
+        query = query.limit(FETCH_BUFFER)
+      }
+
+      const { data: raw } = await query
+      latestArticles = (raw || []).filter((a: Article) => !seenIds.has(a.id) && !dismissedIds.has(a.id))
     }
 
-    // 8. Apply dislike penalties and sort latest by relevance
     if (Object.keys(dislikedCategories).length > 0) {
       latestArticles.sort((a, b) => calcPenalty(a) - calcPenalty(b))
     }
 
-    // 9. Merge & deduplicate
     const personalizedIds = new Set(personalizedArticles.map(a => a.id))
     const uniqueLatest = latestArticles.filter(a => !personalizedIds.has(a.id))
 
-    // Interleave: personalized first, then latest
-    let merged = [...personalizedArticles, ...uniqueLatest].slice(0, totalTarget)
-
-    // 9.5. Apply category filter if specified
-    categoryFilter = typeof params?.category === 'string' ? params.category.trim() : null
-    if (categoryFilter) {
-      merged = merged.filter(a => {
-        if (a.category && a.category.split(',').some(c => c.trim() === categoryFilter)) return true
-        const artMedium = (a as unknown as Record<string, unknown>).category_medium as string | undefined
-        if (artMedium === categoryFilter) return true
-        return false
-      })
+    let merged: Article[]
+    if (selectedCategory || hasDateFilter) {
+      merged = uniqueLatest.slice(0, INITIAL)
+    } else {
+      // Diversify latest articles across categories before merging with personalized
+      const diverseLatest = diversify(uniqueLatest, latestCount)
+      merged = [...personalizedArticles, ...diverseLatest].slice(0, INITIAL)
     }
 
-    // 10. Map embedding_m3 -> embedding for grouping, then group
-    const articlesWithEmb = merged.map(a => ({
+    // Group similar articles
+    const withEmb = merged.map(a => ({
       ...a,
-      embedding: (a as unknown as Record<string, unknown>).embedding_m3 as (number[] | string | undefined),
+      embedding: (a as unknown as Record<string, unknown>).embedding_m3 as number[] | string | undefined,
     }))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    articles = groupSimilarArticles(articlesWithEmb as Article[], groupingThreshold) as any
-    articles = articles.slice(0, 50)
+    const grouped = groupSimilarArticles(withEmb as Article[], groupingThreshold) as any
+
+    // Strip embedding vectors — they're large and not needed on the client
+    articles = stripEmbeddings(grouped)
 
   } catch (e: unknown) {
     console.error('Home page error:', e)
-    if (
-      typeof e === 'object' &&
-      e !== null &&
-      'digest' in e &&
-      (e as { digest: string }).digest.startsWith('NEXT_REDIRECT')
-    ) {
-      throw e
-    }
-    if (e instanceof Error) {
-      error = e
-    } else {
-      error = new Error(String(e))
-    }
+    if (typeof e === 'object' && e !== null && 'digest' in e &&
+      (e as { digest: string }).digest.startsWith('NEXT_REDIRECT')) throw e
+    error = e instanceof Error ? e : new Error(String(e))
   }
 
-  // Fallback UI
   if (error) {
     return (
       <div className="min-h-screen bg-black text-white p-8 flex flex-col items-center justify-center text-center">
         <h1 className="text-3xl font-bold text-red-500 mb-4">System Error</h1>
-        <p className="text-slate-400 max-w-md mx-auto mb-8">
-          The application encountered an error while initializing.
-        </p>
-        <div className="bg-slate-900 p-4 rounded text-left font-mono text-xs overflow-auto max-w-2xl w-full border border-slate-800">
-          <p className="text-red-400 mb-2">Error Details:</p>
+        <div className="bg-slate-900 p-4 rounded font-mono text-xs overflow-auto max-w-2xl w-full border border-slate-800">
           {error.message}
         </div>
       </div>
     )
   }
 
-  if (!user) {
-    return null
-  }
+  if (!user) return null
 
-  // Normal Render
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-8">
       <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -262,33 +254,17 @@ export default async function Home({
           </h1>
           <p className="text-slate-400">AIによって厳選された最新ニュース</p>
         </div>
-
         <div className="flex flex-wrap items-center gap-4">
-          <Suspense fallback={null}>
-            <GroupingSlider initialValue={groupingThreshold} />
-          </Suspense>
-          <Suspense fallback={null}>
-            <FilterSlider initialValue={filterStrength} />
-          </Suspense>
+          <Suspense fallback={null}><FilterSlider initialValue={filterStrength} /></Suspense>
         </div>
       </header>
 
-      {categoryFilter && (
-        <div className="mb-6 flex items-center gap-2">
-          <span className="text-sm text-slate-400">フィルタ中:</span>
-          <span className="text-sm font-bold text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-full px-3 py-1">
-            {categoryFilter}
-          </span>
-          <Link
-            href="/"
-            className="text-xs text-slate-500 hover:text-red-400 transition-colors ml-2"
-          >
-            クリア
-          </Link>
-        </div>
-      )}
-
-      <NewsGrid articles={articles || []} />
+      <NewsFeedClient
+        articles={articles || []}
+        selectedCategory={selectedCategory}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+      />
     </div>
   )
 }

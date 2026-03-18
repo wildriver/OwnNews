@@ -3,32 +3,23 @@
 import { PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
+// RSS categories from ceek.jp — fixed 8 axes for consistent radar shape
+const RSS_CATEGORIES = ['IT', 'スポーツ', 'エンターテイメント', '地方・地域', '訃報・人事', 'サイエンス', '中国・韓国', 'その他']
+
 interface HealthRadarInfoProps {
     distribution: Record<string, number>
     label?: string
 }
 
 export function HealthRadarInfo({ distribution, label }: HealthRadarInfoProps) {
-    // Transform distribution to chart data
-    // Normalize to 100 for better radar visualization (relative to max)
-    const maxVal = Math.max(...Object.values(distribution), 1);
+    const maxVal = Math.max(...RSS_CATEGORIES.map(c => distribution[c] || 0), 1)
 
-    // Ensure we have some default categories if empty
-    const subjects = Object.keys(distribution).length > 0
-        ? Object.keys(distribution)
-        : ['政治', '経済', '国際', 'IT', '社会', 'エンタメ'];
-
-    const data = subjects.map(subject => ({
+    // Always use the fixed 8 RSS categories so the radar shape is consistent
+    const data = RSS_CATEGORIES.map(subject => ({
         subject,
         A: distribution[subject] || 0,
-        fullMark: maxVal > 0 ? maxVal : 10 // scale based on max
-    }));
-
-    // If we have very few categories, add some dummy ones with 0 to make the radar look like a radar
-    if (data.length < 3) {
-        const defaults = ['政治', '経済', 'IT'].filter(d => !subjects.includes(d));
-        defaults.forEach(d => data.push({ subject: d, A: 0, fullMark: maxVal }));
-    }
+        fullMark: maxVal,
+    }))
 
     return (
         <Card className="border-white/10 bg-white/5 backdrop-blur-sm">

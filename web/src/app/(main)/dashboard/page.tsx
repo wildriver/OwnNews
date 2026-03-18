@@ -6,7 +6,8 @@ import { TopicTreemap } from '@/components/topic-treemap'
 import { KeywordBar } from '@/components/keyword-cloud'
 import { NutrientRadarInfo } from '@/components/nutrient-radar-info'
 import { TopicTransitionChart } from '@/components/topic-transition-chart'
-import { getInformationHealth, getActivityHistory, getInformationHealthSeries } from '@/lib/health'
+import { getInformationHealth, getActivityHistory, getInformationHealthSeries, getGlobalCategoryDistribution } from '@/lib/health'
+import { GlobalCategoryBar } from '@/components/global-category-bar'
 import Link from 'next/link'
 
 export const runtime = 'edge'
@@ -30,10 +31,11 @@ export default async function DashboardPage({
     }
 
     // Fetch Real Data
-    const [healthStats, activityHistory, healthSeries] = await Promise.all([
+    const [healthStats, activityHistory, healthSeries, globalCategoryDist] = await Promise.all([
         getInformationHealth(supabase, user.email || '', period),
         getActivityHistory(supabase, user.email || ''),
-        getInformationHealthSeries(supabase, user.email || '', period)
+        getInformationHealthSeries(supabase, user.email || '', period),
+        getGlobalCategoryDistribution(supabase),
     ])
 
     // Find the most dominant medium category for summary
@@ -93,7 +95,10 @@ export default async function DashboardPage({
                 {/* Row 2: Transition Line Chart */}
                 <TopicTransitionChart series={healthSeries} />
 
-                {/* Row 3: Treemap + Keyword Bar */}
+                {/* Row 3: Global article distribution */}
+                <GlobalCategoryBar data={globalCategoryDist} />
+
+                {/* Row 4: Treemap + Keyword Bar */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <TopicTreemap distribution={healthStats.medium_distribution} />
                     <KeywordBar data={healthStats.top_keywords} />

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AppSidebar } from '@/components/app-sidebar'
 import { getInformationHealth } from '@/lib/health'
+import { VersionBadge } from '@/components/version-badge'
 
 export const runtime = 'edge'
 
@@ -27,6 +28,7 @@ export default async function MainLayout({
             <main className="flex-1 overflow-y-auto w-full">
                 {children}
             </main>
+            <VersionBadge />
         </div>
     )
 }

@@ -1,19 +1,23 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { X } from "lucide-react"
+import { X, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import Link from 'next/link'
 
 import { GroupedArticle } from '@/lib/types'
 
-export function ArticleCard({ article }: { article: GroupedArticle }) {
-    const router = useRouter()
+interface ArticleCardProps {
+    article: GroupedArticle
+    onCategoryClick?: (category: string) => void
+}
+
+export function ArticleCard({ article, onCategoryClick }: ArticleCardProps) {
     const [isVisible, setIsVisible] = useState(true)
+    const [expanded, setExpanded] = useState(false)
     const [imageLoaded, setImageLoaded] = useState(true) // Start visible to avoid hydration mismatch
     const [imageError, setImageError] = useState(false)
     const categories = article.category.split(',').filter(c => c.trim())
@@ -84,7 +88,7 @@ export function ArticleCard({ article }: { article: GroupedArticle }) {
                         {relatedCount > 0 && (
                             <Badge
                                 variant="outline"
-                                className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[9px] px-1 py-0 h-4 font-bold"
+                                className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px] px-1.5 py-0 h-5 font-bold"
                             >
                                 {relatedCount + 1} SOURCES
                             </Badge>
@@ -93,19 +97,17 @@ export function ArticleCard({ article }: { article: GroupedArticle }) {
                             <Badge
                                 key={cat}
                                 variant="secondary"
-                                className="bg-sky-500/10 text-sky-400 border-sky-500/20 text-[9px] px-1 py-0 h-4 cursor-pointer hover:bg-sky-500/30 transition-colors"
-                                onClick={(e) => {
+                                className={`bg-sky-500/10 text-sky-400 border-sky-500/20 text-xs px-1.5 py-0 h-5 ${onCategoryClick ? 'cursor-pointer hover:bg-sky-500/30 transition-colors' : ''}`}
+                                onClick={onCategoryClick ? (e) => {
                                     e.preventDefault()
                                     e.stopPropagation()
-                                    const params = new URLSearchParams(window.location.search)
-                                    params.set('category', cat.trim())
-                                    router.push(`/?${params.toString()}`)
-                                }}
+                                    onCategoryClick(cat.trim())
+                                } : undefined}
                             >
                                 {cat}
                             </Badge>
                         ))}
-                        <span className="text-[9px] text-slate-500 flex items-center ml-auto">
+                        <span className="text-xs text-slate-500 flex items-center ml-auto">
                             {article.published?.substring(0, 10)}
                         </span>
                     </div>
@@ -113,11 +115,11 @@ export function ArticleCard({ article }: { article: GroupedArticle }) {
                     {/* Nutrient Badges (Mini) */}
                     {hasNutrients && (
                         <div className="flex flex-wrap gap-1 mb-1">
-                            {factScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-blue-500/30 text-blue-400 bg-blue-500/10">事実高</Badge>}
-                            {contextScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-amber-500/30 text-amber-400 bg-amber-500/10">背景深</Badge>}
-                            {perspectiveScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-purple-500/30 text-purple-400 bg-purple-500/10">視点多</Badge>}
-                            {emotionScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-pink-500/30 text-pink-400 bg-pink-500/10">感情的</Badge>}
-                            {immediacyScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">速報</Badge>}
+                            {factScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-blue-500/30 text-blue-400 bg-blue-500/10">事実高</Badge>}
+                            {contextScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-amber-500/30 text-amber-400 bg-amber-500/10">背景深</Badge>}
+                            {perspectiveScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-purple-500/30 text-purple-400 bg-purple-500/10">視点多</Badge>}
+                            {emotionScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-pink-500/30 text-pink-400 bg-pink-500/10">感情的</Badge>}
+                            {immediacyScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">速報</Badge>}
                         </div>
                     )}
 
@@ -132,6 +134,41 @@ export function ArticleCard({ article }: { article: GroupedArticle }) {
                     </p>
                 </CardContent>
             </Link>
+
+            {/* まとめられた記事（折りたたみ） */}
+            {relatedCount > 0 && (
+                <div className="border-t border-white/10 px-3 py-1.5">
+                    <button
+                        className="w-full flex items-center justify-between text-[11px] text-slate-500 hover:text-slate-300 transition-colors"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(v => !v) }}
+                    >
+                        <span>
+                            まとめられた記事{' '}
+                            <span className="text-emerald-400 font-medium">{relatedCount}件</span>
+                        </span>
+                        <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    {expanded && (
+                        <div className="mt-1.5 space-y-1.5 pb-1">
+                            {article.related?.slice(0, 3).map(r => (
+                                <Link
+                                    key={r.id}
+                                    href={`/article/${r.id}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex items-start gap-1.5 group/rel"
+                                >
+                                    <span className="shrink-0 text-[10px] text-slate-600">
+                                        {(() => { try { return new URL(r.link).hostname.replace('www.', '') } catch { return '記事' } })()}
+                                    </span>
+                                    <span className="text-[11px] text-slate-400 line-clamp-1 group-hover/rel:text-sky-400 transition-colors">
+                                        {r.title}
+                                    </span>
+                                </Link>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
         </Card>
     )
 }
