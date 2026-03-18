@@ -18,14 +18,28 @@ function parseVector(v: unknown): number[] | null {
   return null
 }
 
+// Strip heavy embedding vectors before sending to client
+function stripEmbeddings(articles: GroupedArticle[]): GroupedArticle[] {
+  return articles.map(a => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { embedding_m3, embedding, ...rest } = a as unknown as Record<string, unknown>
+    return {
+      ...rest,
+      related: a.related?.map(r => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { embedding_m3: _e, embedding: _em, ...rRest } = r as unknown as Record<string, unknown>
+        return rRest as unknown as Article
+      }),
+    } as GroupedArticle
+  })
+}
+
 export default async function Home({
   searchParams,
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   const params = await searchParams
-
-  // Category filter from URL param (?category=IT など)
   const selectedCategory = typeof params?.category === 'string' ? params.category.trim() : null
 
   let user = null
@@ -37,55 +51,32 @@ export default async function Home({
   try {
     const supabase = await createClient()
 
-    // Auth
     const { data: userData, error: authError } = await supabase.auth.getUser()
-    if (authError) {
-      console.log('Auth check failed:', authError.message)
-      user = null
-    } else {
-      user = userData.user
-    }
+    if (authError) { user = null } else { user = userData.user }
 
     if (user) {
-      const needsProfileFetch = !params || (typeof params.strength !== 'string' || typeof params.grouping !== 'string')
-
-      if (needsProfileFetch) {
+      if (!params || typeof params.strength !== 'string' || typeof params.grouping !== 'string') {
         const { data: profile } = await supabase
-          .from('user_profile')
-          .select('*')
-          .eq('user_id', user.email)
-          .single()
-        const savedStrength = profile?.filter_strength ?? null
+          .from('user_profile').select('filter_strength, grouping_threshold')
+          .eq('user_id', user.email).single()
+        const savedStrength = profile?.filter_strength ?? 0.5
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const savedGrouping = (profile as any)?.grouping_threshold ?? null
-
-        const rawStrength = typeof params?.strength === 'string'
-          ? parseFloat(params.strength)
-          : (savedStrength ?? 0.5)
-        filterStrength = Math.max(0, Math.min(1, rawStrength || 0.5))
-
-        const rawGrouping = typeof params?.grouping === 'string'
-          ? parseFloat(params.grouping)
-          : (savedGrouping ?? 0.92)
-        groupingThreshold = Math.max(0.70, Math.min(0.99, rawGrouping || 0.92))
+        const savedGrouping = (profile as any)?.grouping_threshold ?? 0.92
+        filterStrength = Math.max(0, Math.min(1, savedStrength))
+        groupingThreshold = Math.max(0.70, Math.min(0.99, savedGrouping))
       } else {
-        filterStrength = Math.max(0, Math.min(1, parseFloat(params.strength as string) || 0.5))
-        groupingThreshold = Math.max(0.70, Math.min(0.99, parseFloat(params.grouping as string) || 0.92))
+        filterStrength = Math.max(0, Math.min(1, parseFloat(params.strength) || 0.5))
+        groupingThreshold = Math.max(0.70, Math.min(0.99, parseFloat(params.grouping) || 0.92))
       }
     }
 
-    if (!user) {
-      redirect('/login')
-    }
+    if (!user) redirect('/login')
 
-    const userEmail = user.email || ''
+    const userEmail = user!.email || ''
 
-    // 1. User interactions
+    // Interactions
     const { data: interactions } = await supabase
-      .from('user_interactions')
-      .select('article_id, interaction_type')
-      .eq('user_id', userEmail)
-
+      .from('user_interactions').select('article_id, interaction_type').eq('user_id', userEmail)
     const seenIds = new Set<string>()
     const dismissedIds = new Set<string>()
     for (const i of (interactions || [])) {
@@ -93,76 +84,65 @@ export default async function Home({
       seenIds.add(i.article_id)
     }
 
-    // 2. Disliked categories (skip when category filter active)
+    // Disliked categories (skip for category filter mode)
     let dislikedCategories: Record<string, number> = {}
     if (dismissedIds.size > 0 && !selectedCategory) {
-      const { data: dismissedArticles } = await supabase
-        .from('articles')
-        .select('category, category_medium')
-        .in('id', Array.from(dismissedIds))
-
-      const catCounts: Record<string, number> = {}
-      for (const a of (dismissedArticles || [])) {
+      const { data: dismissed } = await supabase
+        .from('articles').select('category, category_medium').in('id', Array.from(dismissedIds))
+      const counts: Record<string, number> = {}
+      for (const a of (dismissed || [])) {
         if (a.category_medium && a.category_medium !== 'その他') {
-          catCounts[a.category_medium] = (catCounts[a.category_medium] || 0) + 1
+          counts[a.category_medium] = (counts[a.category_medium] || 0) + 1
         }
-        if (a.category) {
-          for (const c of a.category.split(',')) {
-            const trimmed = c.trim()
-            if (trimmed) catCounts[trimmed] = (catCounts[trimmed] || 0) + 1
-          }
+        for (const c of (a.category || '').split(',')) {
+          const t = c.trim()
+          if (t) counts[t] = (counts[t] || 0) + 1
         }
       }
-      dislikedCategories = catCounts
+      dislikedCategories = counts
     }
 
-    // 3. User vector (skip when category filter active)
+    // User vector (skip for category filter mode)
     let userVector: number[] | null = null
     let hasM3Vector = false
     if (!selectedCategory) {
-      const { data: vectorData } = await supabase
-        .from('user_vectors')
-        .select('vector_m3, vector')
-        .eq('user_id', userEmail)
-        .single()
-      userVector = parseVector(vectorData?.vector_m3) || parseVector(vectorData?.vector)
-      hasM3Vector = !!parseVector(vectorData?.vector_m3)
+      const { data: vd } = await supabase
+        .from('user_vectors').select('vector_m3, vector').eq('user_id', userEmail).single()
+      userVector = parseVector(vd?.vector_m3) || parseVector(vd?.vector)
+      hasM3Vector = !!parseVector(vd?.vector_m3)
     }
 
-    // 4. Blend counts
-    const totalTarget = selectedCategory ? 200 : 80
+    // Initial display count: 20 (more loaded via infinite scroll)
+    const INITIAL = 20
     const personalizedCount = (!selectedCategory && userVector && hasM3Vector)
-      ? Math.max(0, Math.round(totalTarget * filterStrength))
+      ? Math.max(0, Math.round(INITIAL * filterStrength))
       : 0
-    const latestCount = totalTarget - personalizedCount
+    const latestCount = INITIAL - personalizedCount
 
-    // 5. Downrank penalty
-    const calcPenalty = (article: Article): number => {
-      let penalty = 0
-      const artMedium = (article as unknown as Record<string, unknown>).category_medium as string | undefined
-      if (artMedium && dislikedCategories[artMedium]) penalty += dislikedCategories[artMedium] * 0.3
-      if (article.category) {
-        for (const c of article.category.split(',')) {
-          const trimmed = c.trim()
-          if (trimmed && dislikedCategories[trimmed]) penalty += dislikedCategories[trimmed] * 0.2
-        }
+    const calcPenalty = (a: Article) => {
+      let p = 0
+      const m = (a as unknown as Record<string, unknown>).category_medium as string | undefined
+      if (m && dislikedCategories[m]) p += dislikedCategories[m] * 0.3
+      for (const c of (a.category || '').split(',')) {
+        const t = c.trim()
+        if (t && dislikedCategories[t]) p += dislikedCategories[t] * 0.2
       }
-      return Math.min(penalty, 1.0)
+      return Math.min(p, 1.0)
     }
 
-    // 6. Personalized articles
+    // Personalized
     let personalizedArticles: Article[] = []
     if (personalizedCount > 0 && userVector && hasM3Vector) {
       const { data: matched } = await supabase.rpc('match_articles_m3', {
         query_vector: userVector,
-        match_count: personalizedCount + 30,
+        match_count: personalizedCount + 20,
       })
       personalizedArticles = (matched || [])
         .filter((a: Article) => !seenIds.has(a.id) && !dismissedIds.has(a.id))
         .slice(0, personalizedCount)
     }
 
-    // 7. Latest articles — DB-filtered by RSS category when ?category= is set
+    // Latest (+ category filter)
     let latestArticles: Article[] = []
     if (latestCount > 0) {
       let query = supabase
@@ -171,46 +151,40 @@ export default async function Home({
         .order('collected_at', { ascending: false })
 
       if (selectedCategory) {
-        // Use RSS category field (comma-separated text like "IT" or "IT,その他")
-        query = query.like('category', `%${selectedCategory}%`).limit(200)
+        query = query.like('category', `%${selectedCategory}%`).limit(INITIAL + 20)
       } else {
-        query = query.limit(latestCount + 60)
+        query = query.limit(latestCount + 30)
       }
 
-      const { data: articlesRaw } = await query
-      latestArticles = (articlesRaw || [])
-        .filter((a: Article) => !seenIds.has(a.id) && !dismissedIds.has(a.id))
+      const { data: raw } = await query
+      latestArticles = (raw || []).filter((a: Article) => !seenIds.has(a.id) && !dismissedIds.has(a.id))
     }
 
-    // 8. Apply penalties
     if (Object.keys(dislikedCategories).length > 0) {
       latestArticles.sort((a, b) => calcPenalty(a) - calcPenalty(b))
     }
 
-    // 9. Merge
     const personalizedIds = new Set(personalizedArticles.map(a => a.id))
     const uniqueLatest = latestArticles.filter(a => !personalizedIds.has(a.id))
     const merged = selectedCategory
-      ? uniqueLatest
-      : [...personalizedArticles, ...uniqueLatest].slice(0, totalTarget)
+      ? uniqueLatest.slice(0, INITIAL)
+      : [...personalizedArticles, ...uniqueLatest].slice(0, INITIAL)
 
-    // 10. Group similar articles
-    const articlesWithEmb = merged.map(a => ({
+    // Group similar articles
+    const withEmb = merged.map(a => ({
       ...a,
-      embedding: (a as unknown as Record<string, unknown>).embedding_m3 as (number[] | string | undefined),
+      embedding: (a as unknown as Record<string, unknown>).embedding_m3 as number[] | string | undefined,
     }))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    articles = groupSimilarArticles(articlesWithEmb as Article[], groupingThreshold) as any
-    if (!selectedCategory) articles = articles.slice(0, 50)
+    const grouped = groupSimilarArticles(withEmb as Article[], groupingThreshold) as any
+
+    // Strip embedding vectors — they're large and not needed on the client
+    articles = stripEmbeddings(grouped)
 
   } catch (e: unknown) {
     console.error('Home page error:', e)
-    if (
-      typeof e === 'object' && e !== null && 'digest' in e &&
-      (e as { digest: string }).digest.startsWith('NEXT_REDIRECT')
-    ) {
-      throw e
-    }
+    if (typeof e === 'object' && e !== null && 'digest' in e &&
+      (e as { digest: string }).digest.startsWith('NEXT_REDIRECT')) throw e
     error = e instanceof Error ? e : new Error(String(e))
   }
 
@@ -218,11 +192,7 @@ export default async function Home({
     return (
       <div className="min-h-screen bg-black text-white p-8 flex flex-col items-center justify-center text-center">
         <h1 className="text-3xl font-bold text-red-500 mb-4">System Error</h1>
-        <p className="text-slate-400 max-w-md mx-auto mb-8">
-          The application encountered an error while initializing.
-        </p>
-        <div className="bg-slate-900 p-4 rounded text-left font-mono text-xs overflow-auto max-w-2xl w-full border border-slate-800">
-          <p className="text-red-400 mb-2">Error Details:</p>
+        <div className="bg-slate-900 p-4 rounded font-mono text-xs overflow-auto max-w-2xl w-full border border-slate-800">
           {error.message}
         </div>
       </div>
@@ -240,14 +210,9 @@ export default async function Home({
           </h1>
           <p className="text-slate-400">AIによって厳選された最新ニュース</p>
         </div>
-
         <div className="flex flex-wrap items-center gap-4">
-          <Suspense fallback={null}>
-            <GroupingSlider initialValue={groupingThreshold} />
-          </Suspense>
-          <Suspense fallback={null}>
-            <FilterSlider initialValue={filterStrength} />
-          </Suspense>
+          <Suspense fallback={null}><GroupingSlider initialValue={groupingThreshold} /></Suspense>
+          <Suspense fallback={null}><FilterSlider initialValue={filterStrength} /></Suspense>
         </div>
       </header>
 

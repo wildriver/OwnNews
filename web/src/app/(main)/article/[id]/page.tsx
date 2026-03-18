@@ -68,35 +68,44 @@ export default async function ArticlePage({
     const categories = article.category ? article.category.split(',').filter((c: string) => c.trim()) : []
     const keywords: string[] = article.category_minor || []
 
-    // Fetch related articles (sources) using BGE-M3 RPC
-    const { data: related } = await supabase.rpc('match_articles_m3', {
-        query_vector: article.embedding_m3,
-        match_count: 100
-    })
+    // Fetch related articles via BGE-M3 RPC (only if embedding exists)
+    let sameGroup: (Article & { similarity: number })[] = []
+    let similarArticles: (Article & { similarity: number })[] = []
+    let vectorMatchIds = new Set<string>()
 
-    const allMatches = (related || [])
-        .filter((r: Article & { similarity: number }) => r.id !== article.id)
+    if (article.embedding_m3) {
+        const { data: related } = await supabase.rpc('match_articles_m3', {
+            query_vector: article.embedding_m3,
+            match_count: 20
+        })
+        const allMatches = (related || [])
+            .filter((r: Article & { similarity: number }) => r.id !== article.id)
+        vectorMatchIds = new Set(allMatches.map((r: Article) => r.id))
+        sameGroup = allMatches
+            .filter((r: Article & { similarity: number }) => r.similarity >= groupingThreshold)
+            .slice(0, 3)
+        similarArticles = allMatches
+            .filter((r: Article & { similarity: number }) => r.similarity >= groupingThreshold - 0.15 && r.similarity < groupingThreshold)
+            .slice(0, 3)
+    }
 
-    // Use dynamic grouping threshold
-    const sameGroup = allMatches.filter((r: Article & { similarity: number }) => r.similarity >= groupingThreshold)
-    const similarArticles = allMatches.filter((r: Article & { similarity: number }) => r.similarity >= groupingThreshold - 0.15 && r.similarity < groupingThreshold)
-
-    // Fetch category-based related articles (same category_medium, different from vector matches)
-    const vectorMatchIds = new Set(allMatches.map((r: Article) => r.id))
+    // Category-based related articles — use RSS category field (not category_medium which is broken)
     let categoryArticles: Article[] = []
+    const articleCategories = (article.category || '').split(',').map((c: string) => c.trim()).filter(Boolean)
+    const primaryCategory = articleCategories.find((c: string) => c !== 'その他') || articleCategories[0]
 
-    if (article.category_medium && article.category_medium !== 'その他') {
+    if (primaryCategory && primaryCategory !== 'その他') {
         const { data: catRelated } = await supabase
             .from('articles')
-            .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source')
-            .eq('category_medium', article.category_medium)
+            .select('id, title, link, summary, published, category, image_url, source')
+            .like('category', `%${primaryCategory}%`)
             .neq('id', article.id)
-            .order('published', { ascending: false })
-            .limit(8)
+            .order('collected_at', { ascending: false })
+            .limit(10)
 
         categoryArticles = (catRelated || [])
             .filter((r: Article) => !vectorMatchIds.has(r.id))
-            .slice(0, 4)
+            .slice(0, 3)
     }
 
     return (
@@ -279,7 +288,7 @@ export default async function ArticlePage({
                     {categoryArticles.length > 0 && (
                         <div className="space-y-4 pt-6">
                             <h3 className="text-lg font-bold text-emerald-400 border-l-4 border-emerald-500 pl-3">
-                                「{article.category_medium}」の他の記事
+                                「{primaryCategory}」の他の記事
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {categoryArticles.map((src: Article) => (

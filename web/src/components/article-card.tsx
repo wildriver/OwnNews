@@ -87,7 +87,7 @@ export function ArticleCard({ article, onCategoryClick }: ArticleCardProps) {
                         {relatedCount > 0 && (
                             <Badge
                                 variant="outline"
-                                className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[9px] px-1 py-0 h-4 font-bold"
+                                className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px] px-1.5 py-0 h-5 font-bold"
                             >
                                 {relatedCount + 1} SOURCES
                             </Badge>
@@ -96,7 +96,7 @@ export function ArticleCard({ article, onCategoryClick }: ArticleCardProps) {
                             <Badge
                                 key={cat}
                                 variant="secondary"
-                                className={`bg-sky-500/10 text-sky-400 border-sky-500/20 text-[9px] px-1 py-0 h-4 ${onCategoryClick ? 'cursor-pointer hover:bg-sky-500/30 transition-colors' : ''}`}
+                                className={`bg-sky-500/10 text-sky-400 border-sky-500/20 text-xs px-1.5 py-0 h-5 ${onCategoryClick ? 'cursor-pointer hover:bg-sky-500/30 transition-colors' : ''}`}
                                 onClick={onCategoryClick ? (e) => {
                                     e.preventDefault()
                                     e.stopPropagation()
@@ -106,7 +106,7 @@ export function ArticleCard({ article, onCategoryClick }: ArticleCardProps) {
                                 {cat}
                             </Badge>
                         ))}
-                        <span className="text-[9px] text-slate-500 flex items-center ml-auto">
+                        <span className="text-xs text-slate-500 flex items-center ml-auto">
                             {article.published?.substring(0, 10)}
                         </span>
                     </div>
@@ -114,11 +114,11 @@ export function ArticleCard({ article, onCategoryClick }: ArticleCardProps) {
                     {/* Nutrient Badges (Mini) */}
                     {hasNutrients && (
                         <div className="flex flex-wrap gap-1 mb-1">
-                            {factScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-blue-500/30 text-blue-400 bg-blue-500/10">事実高</Badge>}
-                            {contextScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-amber-500/30 text-amber-400 bg-amber-500/10">背景深</Badge>}
-                            {perspectiveScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-purple-500/30 text-purple-400 bg-purple-500/10">視点多</Badge>}
-                            {emotionScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-pink-500/30 text-pink-400 bg-pink-500/10">感情的</Badge>}
-                            {immediacyScore > 50 && <Badge variant="outline" className="text-[10px] py-0 h-5 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">速報</Badge>}
+                            {factScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-blue-500/30 text-blue-400 bg-blue-500/10">事実高</Badge>}
+                            {contextScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-amber-500/30 text-amber-400 bg-amber-500/10">背景深</Badge>}
+                            {perspectiveScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-purple-500/30 text-purple-400 bg-purple-500/10">視点多</Badge>}
+                            {emotionScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-pink-500/30 text-pink-400 bg-pink-500/10">感情的</Badge>}
+                            {immediacyScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">速報</Badge>}
                         </div>
                     )}
 
