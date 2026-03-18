@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 
 // RSS categories from ceek.jp feeds
@@ -15,12 +15,41 @@ export const RSS_CATEGORIES = [
   'その他',
 ] as const
 
+const STORAGE_KEY = 'ownnews_excluded_categories'
+
+function loadExcluded(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (!stored) return new Set()
+    const parsed = JSON.parse(stored)
+    if (Array.isArray(parsed)) return new Set(parsed as string[])
+  } catch { /* ignore */ }
+  return new Set()
+}
+
+function saveExcluded(excluded: Set<string>) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(excluded)))
+  } catch { /* ignore */ }
+}
+
 interface CategoryFilterBarProps {
   onExcludeChange: (excluded: Set<string>) => void
 }
 
 export function CategoryFilterBar({ onExcludeChange }: CategoryFilterBarProps) {
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
+
+  // localStorage から初期値を復元
+  useEffect(() => {
+    const saved = loadExcluded()
+    if (saved.size > 0) {
+      setExcluded(saved)
+      onExcludeChange(saved)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const toggle = (cat: string) => {
     setExcluded(prev => {
@@ -30,6 +59,7 @@ export function CategoryFilterBar({ onExcludeChange }: CategoryFilterBarProps) {
       } else {
         next.add(cat)
       }
+      saveExcluded(next)
       onExcludeChange(next)
       return next
     })
@@ -39,6 +69,7 @@ export function CategoryFilterBar({ onExcludeChange }: CategoryFilterBarProps) {
   const resetAll = () => {
     const empty = new Set<string>()
     setExcluded(empty)
+    saveExcluded(empty)
     onExcludeChange(empty)
   }
 
