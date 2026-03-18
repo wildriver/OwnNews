@@ -37,6 +37,17 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: error.message }, { status: 500 })
         }
 
+        // 閲覧時のみユーザーベクトルを更新（フィルタ強度のパーソナライズに使用）
+        if (type === 'view') {
+            const { error: vecError } = await supabase.rpc('update_user_vector_m3', {
+                p_user_id: user.email,
+            })
+            if (vecError) {
+                // ベクトル更新失敗はログのみ（メインの interact 記録は成功しているため）
+                console.error('User vector update failed:', vecError)
+            }
+        }
+
         return NextResponse.json({ success: true })
     } catch (e) {
         console.error('API Error:', e)

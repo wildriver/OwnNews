@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { X } from "lucide-react"
+import { X, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import Link from 'next/link'
 
@@ -17,6 +17,7 @@ interface ArticleCardProps {
 
 export function ArticleCard({ article, onCategoryClick }: ArticleCardProps) {
     const [isVisible, setIsVisible] = useState(true)
+    const [expanded, setExpanded] = useState(false)
     const [imageLoaded, setImageLoaded] = useState(true) // Start visible to avoid hydration mismatch
     const [imageError, setImageError] = useState(false)
     const categories = article.category.split(',').filter(c => c.trim())
@@ -133,6 +134,41 @@ export function ArticleCard({ article, onCategoryClick }: ArticleCardProps) {
                     </p>
                 </CardContent>
             </Link>
+
+            {/* まとめられた記事（折りたたみ） */}
+            {relatedCount > 0 && (
+                <div className="border-t border-white/10 px-3 py-1.5">
+                    <button
+                        className="w-full flex items-center justify-between text-[11px] text-slate-500 hover:text-slate-300 transition-colors"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(v => !v) }}
+                    >
+                        <span>
+                            まとめられた記事{' '}
+                            <span className="text-emerald-400 font-medium">{relatedCount}件</span>
+                        </span>
+                        <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    {expanded && (
+                        <div className="mt-1.5 space-y-1.5 pb-1">
+                            {article.related?.slice(0, 3).map(r => (
+                                <Link
+                                    key={r.id}
+                                    href={`/article/${r.id}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex items-start gap-1.5 group/rel"
+                                >
+                                    <span className="shrink-0 text-[10px] text-slate-600">
+                                        {(() => { try { return new URL(r.link).hostname.replace('www.', '') } catch { return '記事' } })()}
+                                    </span>
+                                    <span className="text-[11px] text-slate-400 line-clamp-1 group-hover/rel:text-sky-400 transition-colors">
+                                        {r.title}
+                                    </span>
+                                </Link>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
         </Card>
     )
 }
