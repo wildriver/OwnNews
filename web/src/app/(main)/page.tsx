@@ -180,16 +180,17 @@ export default async function Home({
       let query = supabase
         .from('articles')
         .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, embedding_m3, fact_score, context_score, perspective_score, emotion_score, immediacy_score')
-        .order('published', { ascending: false })
+        .order('collected_at', { ascending: false })
 
       if (selectedCategory) {
         query = query.like('category', `%${selectedCategory}%`)
       }
       if (dateFrom) {
-        query = query.gte('published', `${dateFrom}T00:00:00`)
+        // collected_at is timestamptz — filter by JST date (UTC+9)
+        query = query.gte('collected_at', `${dateFrom}T00:00:00+09:00`)
       }
       if (dateTo) {
-        query = query.lte('published', `${dateTo}T23:59:59`)
+        query = query.lte('collected_at', `${dateTo}T23:59:59+09:00`)
       }
       if (selectedCategory || hasDateFilter) {
         query = query.limit(INITIAL + 20)
