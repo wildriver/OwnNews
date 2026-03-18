@@ -195,32 +195,48 @@ export default async function ArticlePage({
                     </div>
 
                     {/* Nutrient Radar */}
-                    {(article.fact_score !== undefined || article.fact_score > 0) && (
-                        <div className="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-sm">
-                            <h2 className="text-xl font-bold text-slate-200 mb-4 flex items-center gap-2">
-                                <span className="text-sky-400">⚡</span> ニュースの栄養素
-                            </h2>
-                            <p className="text-sm text-slate-400 mb-6">
-                                この記事に含まれる要素を5つの観点で分析しました。
-                            </p>
-                            <div className="h-[300px] w-full">
-                                <ClientNutrientRadar
-                                    fact={article.fact_score || 0}
-                                    context={article.context_score || 0}
-                                    perspective={article.perspective_score || 0}
-                                    emotion={article.emotion_score || 0}
-                                    immediacy={article.immediacy_score || 0}
-                                />
+                    {(() => {
+                        const f = article.fact_score ?? 0
+                        const c = article.context_score ?? 0
+                        const p = article.perspective_score ?? 0
+                        const e = article.emotion_score ?? 0
+                        const i = article.immediacy_score ?? 0
+                        const hasData = f > 0 || c > 0 || p > 0 || e > 0 || i > 0
+                        return (
+                            <div className="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-sm">
+                                <h2 className="text-xl font-bold text-slate-200 mb-4 flex items-center gap-2">
+                                    <span className="text-sky-400">⚡</span> ニュースの栄養素
+                                </h2>
+                                {hasData ? (
+                                    <>
+                                        <p className="text-sm text-slate-400 mb-6">
+                                            この記事に含まれる要素を5つの観点で分析しました。
+                                        </p>
+                                        <div className="h-[300px] w-full">
+                                            <ClientNutrientRadar
+                                                fact={f}
+                                                context={c}
+                                                perspective={p}
+                                                emotion={e}
+                                                immediacy={i}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4 text-xs text-slate-500 text-center">
+                                            <div>事実: <span className="text-slate-300">{f}</span></div>
+                                            <div>背景: <span className="text-slate-300">{c}</span></div>
+                                            <div>視点: <span className="text-slate-300">{p}</span></div>
+                                            <div>感情: <span className="text-slate-300">{e}</span></div>
+                                            <div>速報: <span className="text-slate-300">{i}</span></div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-slate-500 italic">
+                                        この記事はまだ栄養素が分析されていません。
+                                    </p>
+                                )}
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4 text-xs text-slate-500 text-center">
-                                <div>事実: <span className="text-slate-300">{article.fact_score || 0}</span></div>
-                                <div>背景: <span className="text-slate-300">{article.context_score || 0}</span></div>
-                                <div>視点: <span className="text-slate-300">{article.perspective_score || 0}</span></div>
-                                <div>感情: <span className="text-slate-300">{article.emotion_score || 0}</span></div>
-                                <div>速報: <span className="text-slate-300">{article.immediacy_score || 0}</span></div>
-                            </div>
-                        </div>
-                    )}
+                        )
+                    })()}
 
                     {/* Main Source Button (Always Visible) */}
                     <div className="flex justify-center pt-4">

@@ -67,6 +67,9 @@ export default async function Home({
 }) {
   const params = await searchParams
   const selectedCategory = typeof params?.category === 'string' ? params.category.trim() : null
+  const dateFrom = typeof params?.dateFrom === 'string' ? params.dateFrom.trim() : null
+  const dateTo = typeof params?.dateTo === 'string' ? params.dateTo.trim() : null
+  const hasDateFilter = !!(dateFrom || dateTo)
 
   let user = null
   let articles: GroupedArticle[] = []
@@ -142,7 +145,8 @@ export default async function Home({
     // (avoids "all その他" problem caused by insertion order within same collected_at batch)
     const INITIAL = 20
     const FETCH_BUFFER = 200
-    const personalizedCount = (!selectedCategory && userVector && hasM3Vector)
+    // Disable personalization when date filter or category filter is active
+    const personalizedCount = (!selectedCategory && !hasDateFilter && userVector && hasM3Vector)
       ? Math.max(0, Math.round(INITIAL * filterStrength))
       : 0
     const latestCount = INITIAL - personalizedCount
@@ -170,16 +174,25 @@ export default async function Home({
         .slice(0, personalizedCount)
     }
 
-    // Latest (+ category filter)
+    // Latest (+ category filter + date filter)
     let latestArticles: Article[] = []
     if (latestCount > 0) {
       let query = supabase
         .from('articles')
         .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, embedding_m3, fact_score, context_score, perspective_score, emotion_score, immediacy_score')
-        .order('collected_at', { ascending: false })
+        .order('published', { ascending: false })
 
       if (selectedCategory) {
-        query = query.like('category', `%${selectedCategory}%`).limit(INITIAL + 20)
+        query = query.like('category', `%${selectedCategory}%`)
+      }
+      if (dateFrom) {
+        query = query.gte('published', `${dateFrom}T00:00:00`)
+      }
+      if (dateTo) {
+        query = query.lte('published', `${dateTo}T23:59:59`)
+      }
+      if (selectedCategory || hasDateFilter) {
+        query = query.limit(INITIAL + 20)
       } else {
         // Fetch large buffer to enable category diversification
         query = query.limit(FETCH_BUFFER)
@@ -197,7 +210,7 @@ export default async function Home({
     const uniqueLatest = latestArticles.filter(a => !personalizedIds.has(a.id))
 
     let merged: Article[]
-    if (selectedCategory) {
+    if (selectedCategory || hasDateFilter) {
       merged = uniqueLatest.slice(0, INITIAL)
     } else {
       // Diversify latest articles across categories before merging with personalized
@@ -251,7 +264,12 @@ export default async function Home({
         </div>
       </header>
 
-      <NewsFeedClient articles={articles || []} selectedCategory={selectedCategory} />
+      <NewsFeedClient
+        articles={articles || []}
+        selectedCategory={selectedCategory}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+      />
     </div>
   )
 }

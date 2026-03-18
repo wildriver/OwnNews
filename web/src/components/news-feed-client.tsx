@@ -14,9 +14,11 @@ const PAGE_SIZE = 20
 interface NewsFeedClientProps {
   articles: GroupedArticle[]
   selectedCategory?: string | null
+  dateFrom?: string | null
+  dateTo?: string | null
 }
 
-export function NewsFeedClient({ articles: initialArticles, selectedCategory }: NewsFeedClientProps) {
+export function NewsFeedClient({ articles: initialArticles, selectedCategory, dateFrom, dateTo }: NewsFeedClientProps) {
   const router = useRouter()
   const [articles, setArticles] = useState<GroupedArticle[]>(initialArticles)
   const [loading, setLoading] = useState(false)
@@ -51,6 +53,8 @@ export function NewsFeedClient({ articles: initialArticles, selectedCategory }: 
         limit: String(PAGE_SIZE),
       })
       if (selectedCategory) params.set('category', selectedCategory)
+      if (dateFrom) params.set('dateFrom', dateFrom)
+      if (dateTo) params.set('dateTo', dateTo)
       if (excluded.size > 0) params.set('exclude', Array.from(excluded).join(','))
 
       const res = await fetch(`/api/articles?${params}`)
@@ -72,7 +76,7 @@ export function NewsFeedClient({ articles: initialArticles, selectedCategory }: 
     } finally {
       setLoading(false)
     }
-  }, [loading, hasMore, offset, selectedCategory, excluded])
+  }, [loading, hasMore, offset, selectedCategory, dateFrom, dateTo, excluded])
 
   // IntersectionObserver
   useEffect(() => {

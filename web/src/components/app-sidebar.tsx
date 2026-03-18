@@ -5,6 +5,7 @@ import { LayoutDashboard, Newspaper, Settings, LogOut, Activity, History } from 
 import Link from 'next/link'
 import { HealthStats } from '@/lib/types'
 import { User } from '@supabase/supabase-js'
+import { DateFilterClient } from '@/components/date-filter-client'
 
 interface AppSidebarProps {
     user: User
@@ -55,6 +56,11 @@ export function AppSidebar({ user, healthStats }: AppSidebarProps) {
                             </Link>
                         </Button>
                     </nav>
+
+                    <Separator className="bg-white/10" />
+
+                    {/* Date Range Filter */}
+                    <DateFilterClient />
 
                     <Separator className="bg-white/10" />
 
