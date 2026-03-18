@@ -42,7 +42,8 @@ export interface HealthStats {
     }
 }
 
+// RSS categories from ceek.jp — must match RSS_CATEGORIES in category-filter-bar.tsx
 export const ONBOARDING_CATEGORIES = [
-    "政治", "経済", "国際", "IT・テクノロジー",
-    "スポーツ", "エンタメ", "科学", "社会", "地方",
+    'IT', 'スポーツ', 'エンターテイメント', '地方・地域',
+    '訃報・人事', 'サイエンス', '中国・韓国', 'その他',
 ]

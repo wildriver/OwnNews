@@ -208,6 +208,42 @@ function createEmptyStats(): HealthStats {
     }
 }
 
+// RSS categories from ceek.jp (same list as category-filter-bar.tsx)
+const RSS_CATEGORIES = ['IT', 'スポーツ', 'エンターテイメント', '地方・地域', '訃報・人事', 'サイエンス', '中国・韓国', 'その他']
+
+/**
+ * 全記事を対象にカテゴリ別の記事数を返す（直近30日）
+ * ダッシュボードの「全記事のジャンル母集団」表示に使用
+ */
+export async function getGlobalCategoryDistribution(
+    supabase: SupabaseClient
+): Promise<{ category: string; count: number }[]> {
+    const since = new Date()
+    since.setDate(since.getDate() - 30)
+
+    const { data } = await supabase
+        .from('articles')
+        .select('category')
+        .gte('collected_at', since.toISOString())
+        .limit(3000)
+
+    if (!data) return []
+
+    const dist: Record<string, number> = {}
+    for (const a of data) {
+        if (!a.category) continue
+        for (const cat of a.category.split(',')) {
+            const t = cat.trim()
+            if (t) dist[t] = (dist[t] || 0) + 1
+        }
+    }
+
+    // Return only known RSS categories, sorted by count desc
+    return RSS_CATEGORIES
+        .map(cat => ({ category: cat, count: dist[cat] || 0 }))
+        .sort((a, b) => b.count - a.count)
+}
+
 export async function getActivityHistory(
     supabase: SupabaseClient,
     userId: string
