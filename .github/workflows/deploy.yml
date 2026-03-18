@@ -38,4 +38,4 @@ jobs:
         run: npx wrangler pages deploy .vercel/output/static --project-name ownnews-web --branch main --commit-hash ${{ github.sha }} --commit-message "deploy from GitHub Actions" --commit-dirty=true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_API_TOKEN }}
