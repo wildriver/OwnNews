@@ -49,37 +49,3 @@ export async function updateFilterStrength(value: number) {
     }
 }
 
-export async function updateGroupingThreshold(value: number) {
-    const supabase = await createClient()
-
-    try {
-        const {
-            data: { user },
-        } = await supabase.auth.getUser()
-
-        if (!user) {
-            return { success: false, error: 'User not authenticated' }
-        }
-
-        const userEmail = user.email
-        if (!userEmail) {
-            return { success: false, error: 'User email not found' }
-        }
-
-        const { error } = await supabase
-            .from('user_profile')
-            .update({ grouping_threshold: value })
-            .eq('user_id', userEmail)
-
-        if (error) {
-            console.error('Error updating grouping threshold:', error)
-            return { success: false, error: 'Database update failed' }
-        }
-
-        revalidatePath('/')
-        return { success: true }
-    } catch (error) {
-        console.error('Unexpected error in updateGroupingThreshold:', error)
-        return { success: false, error: 'Internal server error' }
-    }
-}

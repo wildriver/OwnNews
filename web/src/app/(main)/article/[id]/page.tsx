@@ -8,8 +8,6 @@ import { DeepDiveDialog } from '@/components/deep-dive-dialog'
 import { Sparkles } from 'lucide-react'
 import { Article } from '@/lib/types'
 import { SafeImage } from '@/components/safe-image'
-import { FilterSlider } from '@/components/filter-slider'
-import { GroupingSlider } from '@/components/grouping-slider'
 import { ClientNutrientRadar } from '@/components/client-nutrient-radar'
 
 export const runtime = 'edge'
@@ -45,25 +43,7 @@ export default async function ArticlePage({
         notFound()
     }
 
-    // Fetch preferences from profile or URL
-    let groupingThreshold = 0.92
-    let filterStrength = 0.50
-
-    const { data: profile } = await supabase
-        .from('user_profile')
-        .select('grouping_threshold, filter_strength')
-        .eq('user_id', user.email)
-        .single()
-
-    const rawGrouping = typeof params_url?.grouping === 'string'
-        ? parseFloat(params_url.grouping)
-        : (profile?.grouping_threshold ?? 0.92)
-    groupingThreshold = Math.max(0.70, Math.min(0.99, rawGrouping || 0.92))
-
-    const rawStrength = typeof params_url?.strength === 'string'
-        ? parseFloat(params_url.strength)
-        : (profile?.filter_strength ?? 0.50)
-    filterStrength = Math.max(0, Math.min(1, rawStrength || 0.50))
+    const groupingThreshold = 0.92  // fixed — grouping slider removed
 
     const categories = article.category ? article.category.split(',').filter((c: string) => c.trim()) : []
     const keywords: string[] = article.category_minor || []
@@ -119,10 +99,6 @@ export default async function ArticlePage({
                         </Link>
                     </Button>
 
-                    <div className="flex flex-col md:flex-row gap-4 items-center w-full md:w-auto">
-                        <FilterSlider initialValue={filterStrength} />
-                        <GroupingSlider initialValue={groupingThreshold} />
-                    </div>
                 </header>
 
                 <article className="space-y-8">

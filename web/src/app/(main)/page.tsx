@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { NewsFeedClient } from '@/components/news-feed-client'
 import { FilterSlider } from '@/components/filter-slider'
-import { GroupingSlider } from '@/components/grouping-slider'
 import { groupSimilarArticles } from '@/lib/news'
 import { Article, GroupedArticle } from '@/lib/types'
 import { Suspense } from 'react'
@@ -75,7 +74,7 @@ export default async function Home({
   let articles: GroupedArticle[] = []
   let error: Error | null = null
   let filterStrength = 0.5
-  let groupingThreshold = 0.92
+  const groupingThreshold = 0.92  // fixed — grouping slider removed
 
   try {
     const supabase = await createClient()
@@ -84,18 +83,14 @@ export default async function Home({
     if (authError) { user = null } else { user = userData.user }
 
     if (user) {
-      if (!params || typeof params.strength !== 'string' || typeof params.grouping !== 'string') {
+      if (!params || typeof params.strength !== 'string') {
         const { data: profile } = await supabase
-          .from('user_profile').select('filter_strength, grouping_threshold')
+          .from('user_profile').select('filter_strength')
           .eq('user_id', user.email).single()
         const savedStrength = profile?.filter_strength ?? 0.5
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const savedGrouping = (profile as any)?.grouping_threshold ?? 0.92
         filterStrength = Math.max(0, Math.min(1, savedStrength))
-        groupingThreshold = Math.max(0.70, Math.min(0.99, savedGrouping))
       } else {
         filterStrength = Math.max(0, Math.min(1, parseFloat(params.strength) || 0.5))
-        groupingThreshold = Math.max(0.70, Math.min(0.99, parseFloat(params.grouping) || 0.92))
       }
     }
 
@@ -260,7 +255,6 @@ export default async function Home({
           <p className="text-slate-400">AIによって厳選された最新ニュース</p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-          <Suspense fallback={null}><GroupingSlider initialValue={groupingThreshold} /></Suspense>
           <Suspense fallback={null}><FilterSlider initialValue={filterStrength} /></Suspense>
         </div>
       </header>
