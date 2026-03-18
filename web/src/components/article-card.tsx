@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,7 @@ import Link from 'next/link'
 import { GroupedArticle } from '@/lib/types'
 
 export function ArticleCard({ article }: { article: GroupedArticle }) {
+    const router = useRouter()
     const [isVisible, setIsVisible] = useState(true)
     const [imageLoaded, setImageLoaded] = useState(true) // Start visible to avoid hydration mismatch
     const [imageError, setImageError] = useState(false)
@@ -91,7 +93,14 @@ export function ArticleCard({ article }: { article: GroupedArticle }) {
                             <Badge
                                 key={cat}
                                 variant="secondary"
-                                className="bg-sky-500/10 text-sky-400 border-sky-500/20 text-[9px] px-1 py-0 h-4"
+                                className="bg-sky-500/10 text-sky-400 border-sky-500/20 text-[9px] px-1 py-0 h-4 cursor-pointer hover:bg-sky-500/30 transition-colors"
+                                onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    const params = new URLSearchParams(window.location.search)
+                                    params.set('category', cat.trim())
+                                    router.push(`/?${params.toString()}`)
+                                }}
                             >
                                 {cat}
                             </Badge>
