@@ -3,11 +3,17 @@ export function VersionBadge() {
   const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME || null
 
   const label = buildTime
-    ? `v${hash.slice(0, 7)} · ${new Date(buildTime).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+    ? `v${hash.slice(0, 7)} · ${new Date(buildTime).toLocaleString('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`
     : `v${hash.slice(0, 7)}`
 
   return (
-    <div className="fixed bottom-3 left-3 z-50 pointer-events-none">
+    <div className="fixed bottom-2 right-3 z-50 pointer-events-none">
       <span className="text-[10px] text-slate-700 font-mono select-none">
         {label}
       </span>

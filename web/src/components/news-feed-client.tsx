@@ -1,8 +1,9 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { NewsGrid } from '@/components/news-grid'
+import { CategoryFilterBar } from '@/components/category-filter-bar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { X, Loader2 } from 'lucide-react'
@@ -19,8 +20,9 @@ export function NewsFeedClient({ articles: initialArticles, selectedCategory }: 
   const router = useRouter()
   const [articles, setArticles] = useState<GroupedArticle[]>(initialArticles)
   const [loading, setLoading] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
+  const [hasMore, setHasMore] = useState(initialArticles.length >= PAGE_SIZE)
   const [offset, setOffset] = useState(initialArticles.length)
+  const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const loaderRef = useRef<HTMLDivElement>(null)
 
   // Reset when initial data changes (e.g. category filter applied)
@@ -29,6 +31,16 @@ export function NewsFeedClient({ articles: initialArticles, selectedCategory }: 
     setOffset(initialArticles.length)
     setHasMore(initialArticles.length >= PAGE_SIZE)
   }, [initialArticles])
+
+  // Client-side exclusion filter
+  const visible = useMemo(() => {
+    if (excluded.size === 0) return articles
+    return articles.filter(a => {
+      const cats = (a.category || '').split(',').map(c => c.trim()).filter(Boolean)
+      // Show article if at least one of its categories is NOT excluded
+      return cats.some(c => !excluded.has(c)) || cats.length === 0
+    })
+  }, [articles, excluded])
 
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return
@@ -39,6 +51,7 @@ export function NewsFeedClient({ articles: initialArticles, selectedCategory }: 
         limit: String(PAGE_SIZE),
       })
       if (selectedCategory) params.set('category', selectedCategory)
+      if (excluded.size > 0) params.set('exclude', Array.from(excluded).join(','))
 
       const res = await fetch(`/api/articles?${params}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -59,9 +72,9 @@ export function NewsFeedClient({ articles: initialArticles, selectedCategory }: 
     } finally {
       setLoading(false)
     }
-  }, [loading, hasMore, offset, selectedCategory])
+  }, [loading, hasMore, offset, selectedCategory, excluded])
 
-  // IntersectionObserver — trigger load when sentinel enters viewport
+  // IntersectionObserver
   useEffect(() => {
     const el = loaderRef.current
     if (!el) return
@@ -75,6 +88,12 @@ export function NewsFeedClient({ articles: initialArticles, selectedCategory }: 
 
   return (
     <div>
+      {/* Category toggle bar — hidden when a specific category is selected */}
+      {!selectedCategory && (
+        <CategoryFilterBar onExcludeChange={setExcluded} />
+      )}
+
+      {/* Active category filter indicator */}
       {selectedCategory && (
         <div className="mb-4 flex items-center gap-2 flex-wrap">
           <span className="text-sm text-slate-400">ジャンルフィルタ:</span>
@@ -90,19 +109,19 @@ export function NewsFeedClient({ articles: initialArticles, selectedCategory }: 
             <X className="h-3 w-3 mr-1" />
             解除
           </Button>
-          <span className="text-xs text-slate-500 ml-1">{articles.length} 件表示中</span>
+          <span className="text-xs text-slate-500 ml-1">{visible.length} 件表示中</span>
         </div>
       )}
 
       <NewsGrid
-        articles={articles}
+        articles={visible}
         onCategoryClick={(cat) => router.push(`/?category=${encodeURIComponent(cat)}`)}
       />
 
       {/* Infinite scroll sentinel */}
       <div ref={loaderRef} className="flex justify-center py-10">
         {loading && <Loader2 className="h-5 w-5 animate-spin text-slate-600" />}
-        {!loading && !hasMore && articles.length > 0 && (
+        {!loading && !hasMore && visible.length > 0 && (
           <p className="text-xs text-slate-700">― すべて読み込み済み ―</p>
         )}
       </div>

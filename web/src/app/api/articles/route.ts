@@ -12,6 +12,8 @@ export async function GET(request: NextRequest) {
   const offset = Math.max(0, parseInt(searchParams.get('offset') || '0'))
   const limit = Math.min(Math.max(1, parseInt(searchParams.get('limit') || '20')), 50)
   const category = searchParams.get('category') || null
+  const excludeParam = searchParams.get('exclude') || null
+  const excluded = excludeParam ? excludeParam.split(',').map(s => s.trim()).filter(Boolean) : []
 
   let query = supabase
     .from('articles')
@@ -21,6 +23,11 @@ export async function GET(request: NextRequest) {
 
   if (category) {
     query = query.like('category', `%${category}%`)
+  }
+
+  // Exclude specific categories via NOT LIKE for each
+  for (const cat of excluded) {
+    query = query.not('category', 'like', `%${cat}%`)
   }
 
   const { data, error } = await query

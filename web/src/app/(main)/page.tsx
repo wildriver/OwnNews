@@ -18,6 +18,32 @@ function parseVector(v: unknown): number[] | null {
   return null
 }
 
+// Round-robin diversify: pick articles evenly across categories
+function diversify(articles: Article[], targetCount: number): Article[] {
+  const byCategory: Record<string, Article[]> = {}
+  for (const a of articles) {
+    const primaryCat = (a.category || '').split(',')[0]?.trim() || 'その他'
+    if (!byCategory[primaryCat]) byCategory[primaryCat] = []
+    byCategory[primaryCat].push(a)
+  }
+  const groups = Object.values(byCategory)
+  const result: Article[] = []
+  let i = 0
+  while (result.length < targetCount) {
+    let added = false
+    for (const group of groups) {
+      if (group[i]) {
+        result.push(group[i])
+        added = true
+        if (result.length >= targetCount) break
+      }
+    }
+    if (!added) break
+    i++
+  }
+  return result
+}
+
 // Strip heavy embedding vectors before sending to client
 function stripEmbeddings(articles: GroupedArticle[]): GroupedArticle[] {
   return articles.map(a => {
@@ -112,8 +138,10 @@ export default async function Home({
       hasM3Vector = !!parseVector(vd?.vector_m3)
     }
 
-    // Initial display count: 20 (more loaded via infinite scroll)
+    // Fetch 200 latest articles and diversify to 20 for initial display
+    // (avoids "all その他" problem caused by insertion order within same collected_at batch)
     const INITIAL = 20
+    const FETCH_BUFFER = 200
     const personalizedCount = (!selectedCategory && userVector && hasM3Vector)
       ? Math.max(0, Math.round(INITIAL * filterStrength))
       : 0
@@ -153,7 +181,8 @@ export default async function Home({
       if (selectedCategory) {
         query = query.like('category', `%${selectedCategory}%`).limit(INITIAL + 20)
       } else {
-        query = query.limit(latestCount + 30)
+        // Fetch large buffer to enable category diversification
+        query = query.limit(FETCH_BUFFER)
       }
 
       const { data: raw } = await query
@@ -166,9 +195,15 @@ export default async function Home({
 
     const personalizedIds = new Set(personalizedArticles.map(a => a.id))
     const uniqueLatest = latestArticles.filter(a => !personalizedIds.has(a.id))
-    const merged = selectedCategory
-      ? uniqueLatest.slice(0, INITIAL)
-      : [...personalizedArticles, ...uniqueLatest].slice(0, INITIAL)
+
+    let merged: Article[]
+    if (selectedCategory) {
+      merged = uniqueLatest.slice(0, INITIAL)
+    } else {
+      // Diversify latest articles across categories before merging with personalized
+      const diverseLatest = diversify(uniqueLatest, latestCount)
+      merged = [...personalizedArticles, ...diverseLatest].slice(0, INITIAL)
+    }
 
     // Group similar articles
     const withEmb = merged.map(a => ({
