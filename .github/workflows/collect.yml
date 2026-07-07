@@ -5,6 +5,9 @@ on:
     - cron: '0 2,7,9,12,21 * * *'  # JST 11時,16時,18時,21時,翌6時
   workflow_dispatch:       # 手動実行も可能
 
+permissions:
+  actions: write   # keepalive（60日無活動による自動無効化の防止）に必要
+
 jobs:
   collect:
     runs-on: ubuntu-latest
@@ -12,12 +15,16 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
+
+      # GitHubはリポジトリに60日間活動がないとscheduleを自動無効化する。
+      # 実行のたびにenable APIを叩いてタイマーをリセットする。
+      - name: Keepalive (prevent scheduled workflow auto-disable)
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/collect.yml/enable"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - uses: actions/setup-python@v5
         with:

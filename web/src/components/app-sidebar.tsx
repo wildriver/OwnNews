@@ -1,18 +1,39 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { LayoutDashboard, Newspaper, Settings, LogOut, Activity, History } from 'lucide-react'
+import { LayoutDashboard, Newspaper, Settings, Activity, History, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 import { HealthStats } from '@/lib/types'
-import { User } from '@supabase/supabase-js'
 import { DateFilterClient } from '@/components/date-filter-client'
+import { getAllInteractions } from '@/lib/client/store'
+import { computeHealthStats } from '@/lib/client/health-local'
+import { INTERACTION_EVENT } from '@/lib/client/interactions'
+import { getPersonalConfig } from '@/lib/client/personal'
 
-interface AppSidebarProps {
-    user: User
-    healthStats: HealthStats | null
-}
+export function AppSidebar() {
+    const [healthStats, setHealthStats] = useState<HealthStats | null>(null)
+    const [hasPersonalDB, setHasPersonalDB] = useState(false)
 
-export function AppSidebar({ user, healthStats }: AppSidebarProps) {
+    useEffect(() => {
+        let cancelled = false
+        const load = async () => {
+            try {
+                const interactions = await getAllInteractions()
+                if (!cancelled) setHealthStats(computeHealthStats(interactions, '30d'))
+            } catch { /* IndexedDB未対応環境では統計非表示 */ }
+        }
+        load()
+        setHasPersonalDB(!!getPersonalConfig())
+        window.addEventListener(INTERACTION_EVENT, load)
+        return () => {
+            cancelled = true
+            window.removeEventListener(INTERACTION_EVENT, load)
+        }
+    }, [])
+
     const getScoreColor = (score: number) => {
         if (score >= 70) return "text-emerald-400"
         if (score >= 40) return "text-amber-400"
@@ -110,23 +131,14 @@ export function AppSidebar({ user, healthStats }: AppSidebarProps) {
             </ScrollArea>
 
             <div className="p-4 border-t border-white/10 mt-auto">
-                <div className="flex items-center gap-3 mb-4 px-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-500 flex items-center justify-center text-xs font-bold text-white">
-                        {user.email?.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-200 truncate">
-                            {user.email?.split('@')[0]}
-                        </div>
-                        <div className="text-xs text-slate-500 truncate">Free Plan</div>
-                    </div>
+                <div className="flex items-start gap-2 px-2 py-1 text-[11px] leading-relaxed text-slate-500">
+                    <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-500/70 mt-0.5" />
+                    <span>
+                        嗜好データはこの端末内
+                        {hasPersonalDB && 'とあなたの個人DB'}
+                        にのみ保存されています
+                    </span>
                 </div>
-                <form action="/auth/signout" method="post">
-                    <Button variant="outline" className="w-full justify-start text-slate-400 border-white/10 hover:bg-white/5 hover:text-white" type="submit">
-                        <LogOut className="mr-2 h-4 w-4" />
-                        Sign out
-                    </Button>
-                </form>
             </div>
         </aside>
     )

@@ -1,44 +1,70 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+'use client'
+
+// Information Health ダッシュボード（ローカル計算版）
+// すべての統計をIndexedDB内の閲覧履歴と記事パックから計算する。
+// サーバへの問い合わせは発生しない。
+
+import { useState, useEffect, useMemo } from 'react'
 import { HealthRadarInfo } from '@/components/health-radar'
 import { ActivityBarChart } from '@/components/activity-chart'
 import { TopicTreemap } from '@/components/topic-treemap'
 import { KeywordBar } from '@/components/keyword-cloud'
 import { NutrientRadarInfo } from '@/components/nutrient-radar-info'
 import { TopicTransitionChart } from '@/components/topic-transition-chart'
-import { getInformationHealth, getActivityHistory, getInformationHealthSeries, getGlobalCategoryDistribution } from '@/lib/health'
 import { GlobalCategoryBar } from '@/components/global-category-bar'
-import Link from 'next/link'
+import {
+    computeHealthStats,
+    computeActivityHistory,
+    computeHealthSeries,
+    computeGlobalCategoryDistribution,
+    Period,
+} from '@/lib/client/health-local'
+import { getAllInteractions, getAllArticles } from '@/lib/client/store'
+import { LocalInteraction, PackArticle } from '@/lib/client/types'
+import { Loader2 } from 'lucide-react'
 
-export const runtime = 'edge'
+export default function DashboardPage() {
+    const [period, setPeriod] = useState<Period>('30d')
+    const [interactions, setInteractions] = useState<LocalInteraction[] | null>(null)
+    const [articles, setArticles] = useState<PackArticle[]>([])
 
-export default async function DashboardPage({
-    searchParams,
-}: {
-    searchParams: Promise<{ period?: string }>
-}) {
-    const supabase = await createClient()
-    const { period: periodParam } = await searchParams
-    const period = (periodParam as '7d' | '30d' | '90d') || '30d'
+    useEffect(() => {
+        let cancelled = false
+        Promise.all([getAllInteractions(), getAllArticles()]).then(([ints, arts]) => {
+            if (cancelled) return
+            setInteractions(ints)
+            setArticles(arts)
+        })
+        return () => { cancelled = true }
+    }, [])
+
     const periodLabel = period === '7d' ? '過去1週間' : period === '30d' ? '過去1ヶ月' : '過去3ヶ月'
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser()
+    const healthStats = useMemo(
+        () => interactions ? computeHealthStats(interactions, period) : null,
+        [interactions, period]
+    )
+    const activityHistory = useMemo(
+        () => interactions ? computeActivityHistory(interactions) : [],
+        [interactions]
+    )
+    const healthSeries = useMemo(
+        () => interactions ? computeHealthSeries(interactions, period) : [],
+        [interactions, period]
+    )
+    const globalCategoryDist = useMemo(
+        () => computeGlobalCategoryDistribution(articles),
+        [articles]
+    )
 
-    if (!user) {
-        redirect('/login')
+    if (!interactions || !healthStats) {
+        return (
+            <div className="min-h-screen flex items-center justify-center text-slate-500">
+                <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+        )
     }
 
-    // Fetch Real Data
-    const [healthStats, activityHistory, healthSeries, globalCategoryDist] = await Promise.all([
-        getInformationHealth(supabase, user.email || '', period),
-        getActivityHistory(supabase, user.email || ''),
-        getInformationHealthSeries(supabase, user.email || '', period),
-        getGlobalCategoryDistribution(supabase),
-    ])
-
-    // Find the most dominant medium category for summary
     const topMedium = Object.entries(healthStats.medium_distribution)
         .sort((a, b) => b[1] - a[1])[0]
 
@@ -50,25 +76,25 @@ export default async function DashboardPage({
                         <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-400">
                             Information Health
                         </h1>
-                        <p className="text-slate-400">あなたの情報摂取バランスと活動履歴</p>
+                        <p className="text-slate-400">あなたの情報摂取バランスと活動履歴（この端末内で計算）</p>
                     </div>
 
                     <div className="flex bg-white/5 border border-white/10 p-1 rounded-lg">
-                        {[
+                        {([
                             { id: '7d', label: '1週' },
                             { id: '30d', label: '1月' },
                             { id: '90d', label: '3月' },
-                        ].map((p) => (
-                            <Link
+                        ] as { id: Period; label: string }[]).map((p) => (
+                            <button
                                 key={p.id}
-                                href={`/dashboard?period=${p.id}`}
+                                onClick={() => setPeriod(p.id)}
                                 className={`px-4 py-1.5 text-xs font-medium rounded-md transition-colors ${period === p.id
                                     ? 'bg-sky-500 text-white'
                                     : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                                     }`}
                             >
                                 {p.label}
-                            </Link>
+                            </button>
                         ))}
                     </div>
                 </header>

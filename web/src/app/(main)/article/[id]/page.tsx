@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect, notFound } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, ExternalLink, Calendar, Tag } from 'lucide-react'
@@ -24,14 +24,6 @@ export default async function ArticlePage({
     const { id } = await params
     void searchParams  // unused but required by Next.js page signature
     const supabase = await createClient()
-
-    const {
-        data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-        redirect('/login')
-    }
 
     const { data: article, error } = await supabase
         .from('articles')

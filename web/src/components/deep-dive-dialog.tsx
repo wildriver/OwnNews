@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sparkles, Loader2 } from "lucide-react"
+import { recordInteraction } from '@/lib/client/interactions'
 
 interface Article {
     id: string
@@ -22,6 +23,8 @@ export function DeepDiveDialog({ article, trigger }: { article: Article, trigger
     })
 
     const startAnalysis = () => {
+        // 深掘りは強い関心シグナルとしてローカルエンジンに学習させる
+        recordInteraction(article.id, 'deep_dive')
         setMessages([])
         append({
             role: 'user',

@@ -3,15 +3,20 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 
-// RSS categories from ceek.jp feeds
+// カテゴリ一覧（CEEK.JPのRSSタグ + 公式RSSソースの既定カテゴリ）
+// lib/types.ts の ONBOARDING_CATEGORIES と揃えること
 export const RSS_CATEGORIES = [
+  '政治',
+  '経済',
+  '国際',
+  '社会',
   'IT',
   'スポーツ',
   'エンターテイメント',
-  '地方・地域',
-  '訃報・人事',
   'サイエンス',
+  '地方・地域',
   '中国・韓国',
+  '訃報・人事',
   'その他',
 ] as const
 

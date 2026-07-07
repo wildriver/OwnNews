@@ -9,6 +9,8 @@ import { toast } from "sonner"
 import Link from 'next/link'
 
 import { GroupedArticle } from '@/lib/types'
+import { recordInteraction } from '@/lib/client/interactions'
+import { InteractionType } from '@/lib/client/types'
 
 interface ArticleCardProps {
     article: GroupedArticle
@@ -32,15 +34,9 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick }: Article
     const immediacyScore = article.immediacy_score ?? 0;
     const hasNutrients = factScore > 0 || contextScore > 0;
 
-    const logInteraction = async (type: string) => {
-        try {
-            await fetch('/api/interact', {
-                method: 'POST',
-                body: JSON.stringify({ articleId: article.id, type }),
-            })
-        } catch (e) {
-            console.error('Failed to log interaction', e)
-        }
+    // 嗜好データはローカル（IndexedDB + 設定時は個人Supabase）にのみ記録する
+    const logInteraction = async (type: InteractionType) => {
+        await recordInteraction(article.id, type)
     }
 
     const handleNotInterested = async (e: React.MouseEvent) => {

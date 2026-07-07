@@ -5,6 +5,12 @@ compatibility_date = "2024-04-01"
 [ai]
 binding = "AI"
 
+# 記事パック配信用R2バケット
+# 事前に Cloudflare Dashboard > R2 で "ownnews-pack" バケットを作成すること
+[[r2_buckets]]
+binding = "PACK_BUCKET"
+bucket_name = "ownnews-pack"
+
 [triggers]
 crons = [
     # JST 06:00-08:00 -> UTC 21:00-23:00 (Runs every 10 mins)
