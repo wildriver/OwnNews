@@ -26,24 +26,24 @@ export default function LoginPage() {
         <div className="min-h-screen flex items-center justify-center bg-background p-4">
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/20 via-background to-background pointer-events-none" />
 
-            <Card className="w-full max-w-md border-white/10 bg-white/5 backdrop-blur-md relative z-10 shadow-2xl">
+            <Card className="w-full max-w-md border-border bg-card relative z-10 shadow-2xl">
                 <CardHeader className="text-center">
-                    <CardTitle className="text-3xl font-bold bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">
+                    <CardTitle className="text-3xl font-bold text-primary">
                         OwnNews
                     </CardTitle>
-                    <CardDescription className="text-slate-400">
+                    <CardDescription className="text-muted-foreground">
                         パーソナライズされたニュースキュレーター
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <p className="text-sm text-center text-slate-300">
+                    <p className="text-sm text-center text-zinc-700">
                         あなた専用のニュースフィードを作成するために、<br />
                         Googleアカウントでログインしてください。
                     </p>
 
                     <Button
                         variant="outline"
-                        className="w-full h-12 border-white/10 hover:bg-white/10 hover:text-white transition-all duration-300 group"
+                        className="w-full h-12 border-border hover:bg-secondary hover:text-foreground transition-all duration-300 group"
                         onClick={handleLogin}
                     >
                         <svg className="w-5 h-5 mr-3 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">

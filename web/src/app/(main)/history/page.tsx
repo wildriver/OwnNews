@@ -1,78 +1,41 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+'use client'
+
+// 閲覧履歴（ローカル版）— IndexedDB内の履歴を表示する。サーバ問い合わせなし。
+
+import { useState, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Clock, XCircle, ExternalLink } from 'lucide-react'
+import { Clock, XCircle, ExternalLink, Loader2 } from 'lucide-react'
 import Link from 'next/link'
+import { getAllInteractions } from '@/lib/client/store'
+import { LocalInteraction } from '@/lib/client/types'
 
-export const runtime = 'edge'
+export default function HistoryPage() {
+    const [interactions, setInteractions] = useState<LocalInteraction[] | null>(null)
 
-// Define types for history items
-interface HistoryArticle {
-    id: string
-    title: string
-    link: string
-    source: string
-    category: string
-}
+    useEffect(() => {
+        getAllInteractions().then(ints =>
+            setInteractions(ints.sort((a, b) => b.created_at.localeCompare(a.created_at)))
+        )
+    }, [])
 
-interface HistoryItem {
-    id: string
-    type: string
-    date: string
-    article: HistoryArticle | null
-}
-
-export default async function HistoryPage() {
-    const supabase = await createClient()
-
-    const {
-        data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-        redirect('/login')
+    if (!interactions) {
+        return (
+            <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+        )
     }
 
-    // Fetch Interactions
-    const { data: interactionsRaw, error: fetchError } = await supabase
-        .from('user_interactions')
-        .select(`
-            *,
-            articles (*)
-        `)
-        .eq('user_id', user.email || '')
-        .order('created_at', { ascending: false })
+    const viewed = interactions.filter(i => i.type === 'view' || i.type === 'deep_dive')
+    const excluded = interactions.filter(i => i.type === 'not_interested')
 
-    if (fetchError) {
-        console.error('History fetch error:', fetchError)
-    }
-
-    // Separate into Viewed and Excluded
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rawData = (interactionsRaw || []) as any[]
-
-    const history: HistoryItem[] = rawData.map((i) => {
-        // Handle array or object for joined data
-        const articleData = Array.isArray(i.articles) ? i.articles[0] : i.articles
-
-        return {
-            id: i.id,
-            type: i.interaction_type,
-            date: i.created_at ? new Date(i.created_at).toLocaleString('ja-JP') : '不明な日付',
-            article: (articleData as HistoryArticle) || null
-        }
-    }).filter((item) => item.article !== null)
-
-    const viewed = history.filter((i) => ['view', 'deep_dive'].includes(i.type))
-    const excluded = history.filter((i) => i.type === 'not_interested')
-
-    const HistoryList = ({ items }: { items: HistoryItem[] }) => {
+    const HistoryList = ({ items }: { items: LocalInteraction[] }) => {
         if (items.length === 0) {
             return (
-                <div className="text-center py-12 text-slate-500">
+                <div className="text-center py-12 text-muted-foreground">
                     履歴はありません
                 </div>
             )
@@ -82,39 +45,41 @@ export default async function HistoryPage() {
             <ScrollArea className="h-[600px] w-full pr-4">
                 <div className="space-y-4">
                     {items.map((item) => (
-                        <Card key={item.id} className="bg-white/5 border-white/10 hover:bg-white/10 transition-colors">
+                        <Card key={`${item.article_id}-${item.type}`} className="bg-card border-border hover:bg-secondary transition-colors">
                             <CardContent className="p-4 flex items-start justify-between gap-4">
                                 <div className="space-y-2">
-                                    <h4 className="font-medium text-slate-200 line-clamp-2">
-                                        <Link href={`/article/${item.article?.id}`} className="hover:text-sky-400 transition-colors flex items-center gap-2">
-                                            {item.article?.title}
+                                    <h4 className="font-medium text-foreground line-clamp-2">
+                                        <Link href={`/article/${item.article_id}`} className="hover:text-primary transition-colors flex items-center gap-2">
+                                            {item.title || '（タイトル不明）'}
                                         </Link>
                                     </h4>
-                                    <div className="flex items-center gap-3 text-xs text-slate-400">
+                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                         <span className="flex items-center gap-1">
                                             <Clock className="w-3 h-3" />
-                                            {item.date}
+                                            {new Date(item.created_at).toLocaleString('ja-JP')}
                                         </span>
-                                        {item.article?.category && (
-                                            <Badge variant="secondary" className="bg-slate-800 text-slate-300 text-[10px] h-5 px-1.5">
-                                                {item.article.category.split(',')[0]}
+                                        {item.category && (
+                                            <Badge variant="secondary" className="bg-secondary text-zinc-700 text-[10px] h-5 px-1.5">
+                                                {item.category.split(',')[0]}
                                             </Badge>
                                         )}
                                         {item.type === 'deep_dive' && (
-                                            <Badge variant="outline" className="text-indigo-400 border-indigo-500/30 text-[10px] h-5 px-1.5">
+                                            <Badge variant="outline" className="text-indigo-600 border-indigo-200 text-[10px] h-5 px-1.5">
                                                 Deep Dive
                                             </Badge>
                                         )}
                                     </div>
                                 </div>
-                                <a
-                                    href={item.article?.link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-slate-500 hover:text-slate-300"
-                                >
-                                    <ExternalLink className="w-4 h-4" />
-                                </a>
+                                {item.link && (
+                                    <a
+                                        href={item.link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-muted-foreground hover:text-zinc-700"
+                                    >
+                                        <ExternalLink className="w-4 h-4" />
+                                    </a>
+                                )}
                             </CardContent>
                         </Card>
                     ))}
@@ -128,25 +93,23 @@ export default async function HistoryPage() {
             <div className="max-w-7xl mx-auto space-y-8">
                 <header className="flex items-center gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-400">
-                            Activity History
-                        </h1>
-                        <p className="text-slate-400">閲覧履歴と非表示設定の管理</p>
+                        <h1 className="text-xl font-bold tracking-tight">履歴</h1>
+                        <p className="text-muted-foreground">閲覧履歴と非表示設定の管理（この端末内のデータ）</p>
                     </div>
                 </header>
 
                 <Tabs defaultValue="viewed" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 bg-white/5 p-1 mb-8">
-                        <TabsTrigger value="viewed" className="data-[state=active]:bg-sky-500/20 data-[state=active]:text-sky-400">
+                    <TabsList className="grid w-full grid-cols-2 bg-card p-1 mb-8">
+                        <TabsTrigger value="viewed" className="data-[state=active]:bg-accent data-[state=active]:text-primary">
                             閲覧履歴 ({viewed.length})
                         </TabsTrigger>
-                        <TabsTrigger value="excluded" className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400">
+                        <TabsTrigger value="excluded" className="data-[state=active]:bg-red-50 data-[state=active]:text-red-600">
                             非表示リスト ({excluded.length})
                         </TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="viewed">
-                        <Card className="border-white/10 bg-black/20 backdrop-blur-sm">
+                        <Card className="border-border bg-card">
                             <CardHeader>
                                 <CardTitle className="text-lg">最近読んだ記事</CardTitle>
                                 <CardDescription>過去の閲覧・分析履歴</CardDescription>
@@ -158,9 +121,9 @@ export default async function HistoryPage() {
                     </TabsContent>
 
                     <TabsContent value="excluded">
-                        <Card className="border-white/10 bg-black/20 backdrop-blur-sm">
+                        <Card className="border-border bg-card">
                             <CardHeader>
-                                <CardTitle className="text-lg text-red-400 flex items-center gap-2">
+                                <CardTitle className="text-lg text-red-600 flex items-center gap-2">
                                     <XCircle className="w-5 h-5" />
                                     興味なしとして除外
                                 </CardTitle>

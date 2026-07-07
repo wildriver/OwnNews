@@ -1,33 +1,23 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import { AppSidebar } from '@/components/app-sidebar'
-import { getInformationHealth } from '@/lib/health'
+import { MobileNav } from '@/components/mobile-nav'
 import { VersionBadge } from '@/components/version-badge'
 
 export const runtime = 'edge'
 
-export default async function MainLayout({
+// ローカルファースト: レイアウトでの認証チェック・サーバ側統計取得はなし。
+// デスクトップ=サイドバー / モバイル=ボトムナビ。
+export default function MainLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
-    const supabase = await createClient()
-
-    const { data: userData, error: authError } = await supabase.auth.getUser()
-    if (authError || !userData.user) {
-        redirect('/login')
-    }
-    const user = userData.user
-
-    // Fetch Health Stats for the Sidebar
-    const healthStats = await getInformationHealth(supabase, user.email || '')
-
     return (
         <div className="flex h-screen overflow-hidden bg-background text-foreground">
-            <AppSidebar user={user} healthStats={healthStats} />
-            <main className="flex-1 overflow-y-auto w-full">
+            <AppSidebar />
+            <main className="flex-1 overflow-y-auto w-full pb-16 md:pb-0">
                 {children}
             </main>
+            <MobileNav />
             <VersionBadge />
         </div>
     )

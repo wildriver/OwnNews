@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Sparkles, Loader2 } from "lucide-react"
+import { recordInteraction } from '@/lib/client/interactions'
 
 interface Article {
     id: string
@@ -22,6 +23,8 @@ export function DeepDiveDialog({ article, trigger }: { article: Article, trigger
     })
 
     const startAnalysis = () => {
+        // 深掘りは強い関心シグナルとしてローカルエンジンに学習させる
+        recordInteraction(article.id, 'deep_dive')
         setMessages([])
         append({
             role: 'user',
@@ -39,20 +42,20 @@ export function DeepDiveDialog({ article, trigger }: { article: Article, trigger
             <DialogTrigger asChild>
                 {trigger}
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px] bg-[#0F172A] border-white/10 text-slate-200">
+            <DialogContent className="sm:max-w-[600px] bg-card border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2 text-xl font-bold bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent">
-                        <Sparkles className="w-5 h-5 text-sky-400" />
+                    <DialogTitle className="flex items-center gap-2 text-xl font-bold text-primary">
+                        <Sparkles className="w-5 h-5 text-primary" />
                         Deep Dive Analysis
                     </DialogTitle>
-                    <DialogDescription className="text-slate-400">
+                    <DialogDescription className="text-muted-foreground">
                         {article.title}
                     </DialogDescription>
                 </DialogHeader>
 
-                <ScrollArea className="h-[400px] mt-4 rounded-md border border-white/5 bg-white/5 p-4">
+                <ScrollArea className="h-[400px] mt-4 rounded-md border border-border bg-card p-4">
                     {messages.length === 0 && !isLoading && (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-2">
+                        <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
                             <Sparkles className="w-8 h-8 opacity-50" />
                             <p>AI分析を開始します...</p>
                         </div>
@@ -61,7 +64,7 @@ export function DeepDiveDialog({ article, trigger }: { article: Article, trigger
                     {messages.map((m) => (
                         m.role === 'assistant' && (
                             <div key={m.id} className="space-y-4 animate-in fade-in duration-500">
-                                <div className="prose prose-invert prose-sm max-w-none leading-relaxed text-slate-300">
+                                <div className="prose prose-sm max-w-none leading-relaxed text-zinc-700">
                                     {m.content}
                                 </div>
                             </div>
@@ -69,7 +72,7 @@ export function DeepDiveDialog({ article, trigger }: { article: Article, trigger
                     ))}
 
                     {isLoading && messages.length > 0 && messages[messages.length - 1].role !== 'assistant' && (
-                        <div className="flex items-center gap-2 text-sky-400 mt-2">
+                        <div className="flex items-center gap-2 text-primary mt-2">
                             <Loader2 className="w-4 h-4 animate-spin" />
                             <span className="text-xs">Thinking...</span>
                         </div>
@@ -77,13 +80,13 @@ export function DeepDiveDialog({ article, trigger }: { article: Article, trigger
                 </ScrollArea>
 
                 <div className="flex justify-end gap-2 mt-4">
-                    <Button variant="ghost" onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-200">
+                    <Button variant="ghost" onClick={() => setIsOpen(false)} className="text-muted-foreground hover:text-foreground">
                         閉じる
                     </Button>
                     <Button
                         onClick={startAnalysis}
                         disabled={isLoading}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground"
                     >
                         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
                         再分析

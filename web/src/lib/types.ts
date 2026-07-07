@@ -46,8 +46,9 @@ export interface HealthStats {
     }
 }
 
-// RSS categories from ceek.jp — must match RSS_CATEGORIES in category-filter-bar.tsx
+// カテゴリ一覧 — category-filter-bar.tsx の RSS_CATEGORIES と揃えること
 export const ONBOARDING_CATEGORIES = [
-    'IT', 'スポーツ', 'エンターテイメント', '地方・地域',
-    '訃報・人事', 'サイエンス', '中国・韓国', 'その他',
+    '政治', '経済', '国際', '社会',
+    'IT', 'スポーツ', 'エンターテイメント', 'サイエンス',
+    '地方・地域', '中国・韓国', '訃報・人事', 'その他',
 ]

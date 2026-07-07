@@ -1,102 +1,119 @@
-import { Button } from '@/components/ui/button'
+'use client'
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { LayoutDashboard, Newspaper, Settings, LogOut, Activity, History } from 'lucide-react'
-import Link from 'next/link'
+import { LayoutDashboard, Newspaper, Settings, Activity, History, ShieldCheck } from 'lucide-react'
 import { HealthStats } from '@/lib/types'
-import { User } from '@supabase/supabase-js'
 import { DateFilterClient } from '@/components/date-filter-client'
+import { getAllInteractions } from '@/lib/client/store'
+import { computeHealthStats } from '@/lib/client/health-local'
+import { INTERACTION_EVENT } from '@/lib/client/interactions'
+import { getPersonalConfig } from '@/lib/client/personal'
 
-interface AppSidebarProps {
-    user: User
-    healthStats: HealthStats | null
-}
+const NAV_ITEMS = [
+    { href: '/', label: 'ニュース', icon: Newspaper },
+    { href: '/dashboard', label: 'ダッシュボード', icon: LayoutDashboard },
+    { href: '/history', label: '履歴', icon: History },
+    { href: '/settings', label: '設定', icon: Settings },
+]
 
-export function AppSidebar({ user, healthStats }: AppSidebarProps) {
+export function AppSidebar() {
+    const pathname = usePathname()
+    const [healthStats, setHealthStats] = useState<HealthStats | null>(null)
+    const [hasPersonalDB, setHasPersonalDB] = useState(false)
+
+    useEffect(() => {
+        let cancelled = false
+        const load = async () => {
+            try {
+                const interactions = await getAllInteractions()
+                if (!cancelled) setHealthStats(computeHealthStats(interactions, '30d'))
+            } catch { /* IndexedDB未対応環境では統計非表示 */ }
+        }
+        load()
+        setHasPersonalDB(!!getPersonalConfig())
+        window.addEventListener(INTERACTION_EVENT, load)
+        return () => {
+            cancelled = true
+            window.removeEventListener(INTERACTION_EVENT, load)
+        }
+    }, [])
+
     const getScoreColor = (score: number) => {
-        if (score >= 70) return "text-emerald-400"
-        if (score >= 40) return "text-amber-400"
-        return "text-rose-400"
+        if (score >= 70) return 'text-primary'
+        if (score >= 40) return 'text-amber-600'
+        return 'text-rose-600'
     }
 
     return (
-        <aside className="w-64 border-r border-white/10 bg-slate-950/50 backdrop-blur-xl hidden md:flex flex-col h-full">
-            <div className="p-6 pb-2">
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-sky-400 to-indigo-400 bg-clip-text text-transparent mb-1">
-                    OwnNews
-                </h1>
-                <p className="text-xs text-slate-500">AI News Curator</p>
+        <aside className="w-60 border-r border-border bg-sidebar hidden md:flex flex-col h-full">
+            <div className="px-5 pt-5 pb-3">
+                <h1 className="text-xl font-bold tracking-tight text-primary">OwnNews</h1>
+                <p className="text-[10px] text-muted-foreground mt-0.5">情報的健康を保つニュース</p>
             </div>
 
-            <ScrollArea className="flex-1 px-4 py-2">
-                <div className="space-y-6">
-                    <nav className="space-y-1">
-                        <Button variant="ghost" className="w-full justify-start text-slate-400 hover:text-slate-100 hover:bg-white/5" asChild>
-                            <Link href="/">
-                                <Newspaper className="mr-2 h-4 w-4" />
-                                News Feed
-                            </Link>
-                        </Button>
-                        <Button variant="ghost" className="w-full justify-start text-slate-400 hover:text-slate-100 hover:bg-white/5" asChild>
-                            <Link href="/dashboard">
-                                <LayoutDashboard className="mr-2 h-4 w-4" />
-                                Dashboard
-                            </Link>
-                        </Button>
-                        <Button variant="ghost" className="w-full justify-start text-slate-400 hover:text-slate-100 hover:bg-white/5" asChild>
-                            <Link href="/history">
-                                <History className="mr-2 h-4 w-4" />
-                                History
-                            </Link>
-                        </Button>
-                        <Button variant="ghost" className="w-full justify-start text-slate-400 hover:text-slate-100 hover:bg-white/5" asChild>
-                            <Link href="/settings">
-                                <Settings className="mr-2 h-4 w-4" />
-                                Settings
-                            </Link>
-                        </Button>
+            <ScrollArea className="flex-1 px-3 py-1">
+                <div className="space-y-4">
+                    <nav className="space-y-0.5">
+                        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+                            const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+                            return (
+                                <Link
+                                    key={href}
+                                    href={href}
+                                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${active
+                                        ? 'bg-accent text-accent-foreground'
+                                        : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                                        }`}
+                                >
+                                    <Icon className="h-4 w-4" />
+                                    {label}
+                                </Link>
+                            )
+                        })}
                     </nav>
 
-                    <Separator className="bg-white/10" />
+                    <Separator className="bg-border" />
 
-                    {/* Date Range Filter */}
                     <DateFilterClient />
 
-                    <Separator className="bg-white/10" />
+                    <Separator className="bg-border" />
 
                     {healthStats && (
                         <div className="px-1">
-                            <h3 className="text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wider flex items-center gap-2">
+                            <h3 className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-wider flex items-center gap-1.5">
                                 <Activity className="w-3 h-3" />
-                                Information Health
+                                情報的健康
                             </h3>
 
-                            <div className="bg-white/5 rounded-lg p-3 space-y-4 border border-white/5">
+                            <div className="bg-card rounded-lg p-3 space-y-3 border border-border">
                                 <div>
-                                    <div className="text-xs text-slate-400 mb-1">Diversity Score</div>
-                                    <div className={`text-2xl font-bold ${getScoreColor(healthStats.diversity_score)}`}>
-                                        {healthStats.diversity_score}/100
+                                    <div className="text-[10px] text-muted-foreground mb-0.5">多様性スコア</div>
+                                    <div className={`text-xl font-bold tnum ${getScoreColor(healthStats.diversity_score)}`}>
+                                        {healthStats.diversity_score}
+                                        <span className="text-[11px] font-normal text-muted-foreground">/100</span>
                                     </div>
                                 </div>
 
                                 <div>
-                                    <div className="text-xs text-slate-400 mb-1">Bias Level</div>
-                                    <div className="text-sm font-medium text-slate-200">
-                                        {healthStats.bias_level}
-                                    </div>
+                                    <div className="text-[10px] text-muted-foreground mb-0.5">摂取バランス</div>
+                                    <div className="text-[13px] font-medium">{healthStats.bias_level}</div>
                                     {healthStats.dominant_category && (
-                                        <div className="text-xs text-slate-500 mt-1">
-                                            Most: {healthStats.dominant_category} ({Math.round(healthStats.dominant_ratio * 100)}%)
+                                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                                            最多: {healthStats.dominant_category}（{Math.round(healthStats.dominant_ratio * 100)}%）
                                         </div>
                                     )}
                                 </div>
 
                                 {healthStats.missing_categories.length > 0 && (
-                                    <div className="pt-2 border-t border-white/10">
-                                        <div className="text-[10px] text-slate-500 mb-2">Suggestions</div>
-                                        <div className="flex flex-wrap gap-1.5">
+                                    <div className="pt-2 border-t border-border">
+                                        <div className="text-[10px] text-muted-foreground mb-1.5">足りない栄養</div>
+                                        <div className="flex flex-wrap gap-1">
                                             {healthStats.missing_categories.slice(0, 3).map(c => (
-                                                <span key={c} className="text-[10px] px-1.5 py-0.5 bg-indigo-500/10 text-indigo-300 rounded border border-indigo-500/20">
+                                                <span key={c} className="text-[10px] px-1.5 py-0.5 bg-secondary text-secondary-foreground rounded border border-border">
                                                     {c}
                                                 </span>
                                             ))}
@@ -109,24 +126,15 @@ export function AppSidebar({ user, healthStats }: AppSidebarProps) {
                 </div>
             </ScrollArea>
 
-            <div className="p-4 border-t border-white/10 mt-auto">
-                <div className="flex items-center gap-3 mb-4 px-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-500 flex items-center justify-center text-xs font-bold text-white">
-                        {user.email?.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-200 truncate">
-                            {user.email?.split('@')[0]}
-                        </div>
-                        <div className="text-xs text-slate-500 truncate">Free Plan</div>
-                    </div>
+            <div className="p-4 border-t border-border mt-auto">
+                <div className="flex items-start gap-2 text-[10px] leading-relaxed text-muted-foreground">
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-primary/70 mt-0.5" />
+                    <span>
+                        嗜好データはこの端末内
+                        {hasPersonalDB && 'とあなたの個人DB'}
+                        にのみ保存されています
+                    </span>
                 </div>
-                <form action="/auth/signout" method="post">
-                    <Button variant="outline" className="w-full justify-start text-slate-400 border-white/10 hover:bg-white/5 hover:text-white" type="submit">
-                        <LogOut className="mr-2 h-4 w-4" />
-                        Sign out
-                    </Button>
-                </form>
             </div>
         </aside>
     )

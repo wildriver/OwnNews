@@ -22,18 +22,18 @@ export function TopicTransitionChart({ series }: TopicTransitionChartProps) {
         ...s.counts,
     }))
 
-    const colors = ['#38bdf8', '#818cf8', '#fb7185', '#34d399', '#fbbf24']
+    const colors = ['#0E9F6E', '#2563EB', '#fb7185', '#0E9F6E', '#fbbf24']
 
     return (
-        <Card className="border-white/10 bg-white/5 backdrop-blur-sm col-span-1 md:col-span-2">
+        <Card className="border-border bg-card col-span-1 md:col-span-2">
             <CardHeader>
-                <CardTitle className="text-lg font-bold text-slate-200">興味の変遷</CardTitle>
+                <CardTitle className="text-lg font-bold text-foreground">興味の変遷</CardTitle>
                 <CardDescription>トピック別の関心度の推移</CardDescription>
             </CardHeader>
             <CardContent className="h-[350px]">
                 <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F0F1EF" />
                         <XAxis
                             dataKey="name"
                             stroke="#64748b"
@@ -51,7 +51,7 @@ export function TopicTransitionChart({ series }: TopicTransitionChartProps) {
                         <Tooltip
                             contentStyle={{
                                 backgroundColor: '#1e293b',
-                                border: '1px solid rgba(255,255,255,0.1)',
+                                border: '1px solid #E5E7E3',
                                 borderRadius: '8px',
                             }}
                             itemStyle={{ fontSize: '12px' }}

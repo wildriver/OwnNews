@@ -31,9 +31,9 @@ export function NutrientRadar({ fact, context, perspective, emotion, immediacy, 
                     <Radar
                         name="Nutrients"
                         dataKey="A"
-                        stroke="#0ea5e9"
+                        stroke="#0E9F6E"
                         strokeWidth={2}
-                        fill="#0ea5e9"
+                        fill="#0E9F6E"
                         fillOpacity={0.3}
                     />
                 </RadarChart>

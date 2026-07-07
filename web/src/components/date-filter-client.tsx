@@ -51,13 +51,13 @@ function DateFilterInner() {
 
   return (
     <div className="px-1">
-      <h3 className="text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wider flex items-center gap-2">
+      <h3 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider flex items-center gap-2">
         <CalendarDays className="w-3 h-3" />
         Date Filter
         {isActive && (
           <button
             onClick={clearFilter}
-            className="ml-auto text-slate-600 hover:text-slate-300 transition-colors"
+            className="ml-auto text-muted-foreground/70 hover:text-zinc-700 transition-colors"
             title="フィルタ解除"
           >
             <X className="w-3 h-3" />
@@ -66,7 +66,7 @@ function DateFilterInner() {
       </h3>
 
       {isActive && (
-        <div className="text-[10px] text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded px-2 py-1 mb-2 truncate">
+        <div className="text-[10px] text-primary bg-accent border border-primary/25 rounded px-2 py-1 mb-2 truncate">
           {dateFrom === dateTo
             ? dateFrom
             : `${dateFrom || '…'} 〜 ${dateTo || '…'}`}
@@ -83,8 +83,8 @@ function DateFilterInner() {
               onClick={() => applyFilter(p.from, p.to)}
               className={`text-[11px] px-2 py-1 rounded border transition-colors ${
                 active
-                  ? 'bg-sky-500/20 border-sky-500/40 text-sky-300'
-                  : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                  ? 'bg-accent border-primary/40 text-accent-foreground'
+                  : 'bg-card border-border text-muted-foreground hover:bg-secondary hover:text-foreground'
               }`}
             >
               {p.label}
@@ -100,7 +100,7 @@ function DateFilterInner() {
           value={dateFrom}
           max={dateTo || today}
           onChange={(e) => applyFilter(e.target.value, dateTo || e.target.value)}
-          className="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-[11px] text-slate-400 focus:outline-none focus:border-sky-500/40 focus:bg-white/10 transition-colors cursor-pointer [color-scheme:dark]"
+          className="w-full bg-card border border-border rounded px-2 py-1 text-[11px] text-muted-foreground focus:outline-none focus:border-primary/40 focus:bg-secondary transition-colors cursor-pointer [color-scheme:dark]"
         />
         <input
           type="date"
@@ -108,7 +108,7 @@ function DateFilterInner() {
           min={dateFrom || undefined}
           max={today}
           onChange={(e) => applyFilter(dateFrom || e.target.value, e.target.value)}
-          className="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-[11px] text-slate-400 focus:outline-none focus:border-sky-500/40 focus:bg-white/10 transition-colors cursor-pointer [color-scheme:dark]"
+          className="w-full bg-card border border-border rounded px-2 py-1 text-[11px] text-muted-foreground focus:outline-none focus:border-primary/40 focus:bg-secondary transition-colors cursor-pointer [color-scheme:dark]"
         />
       </div>
     </div>
@@ -117,7 +117,7 @@ function DateFilterInner() {
 
 export function DateFilterClient() {
   return (
-    <Suspense fallback={<div className="px-1 h-24 bg-white/5 rounded animate-pulse" />}>
+    <Suspense fallback={<div className="px-1 h-24 bg-card rounded animate-pulse" />}>
       <DateFilterInner />
     </Suspense>
   )
