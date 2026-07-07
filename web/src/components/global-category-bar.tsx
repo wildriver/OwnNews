@@ -12,7 +12,7 @@ export function GlobalCategoryBar({ data }: GlobalCategoryBarProps) {
 
     // Color palette for each category (same order as RSS_CATEGORIES)
     const colors: Record<string, string> = {
-        'IT': 'bg-sky-500',
+        'IT': 'bg-primary',
         'スポーツ': 'bg-emerald-500',
         'エンターテイメント': 'bg-violet-500',
         '地方・地域': 'bg-amber-500',
@@ -23,9 +23,9 @@ export function GlobalCategoryBar({ data }: GlobalCategoryBarProps) {
     }
 
     return (
-        <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
+        <Card className="border-border bg-card">
             <CardHeader>
-                <CardTitle className="text-lg font-bold text-slate-200">記事母集団 (過去30日)</CardTitle>
+                <CardTitle className="text-lg font-bold text-foreground">記事母集団 (過去30日)</CardTitle>
                 <CardDescription>収集された全記事のジャンル分布 — 合計 {total.toLocaleString()} 件</CardDescription>
             </CardHeader>
             <CardContent>
@@ -36,24 +36,24 @@ export function GlobalCategoryBar({ data }: GlobalCategoryBarProps) {
                         const color = colors[category] ?? 'bg-slate-500'
                         return (
                             <div key={category} className="flex items-center gap-3">
-                                <div className="w-20 shrink-0 text-right text-xs text-slate-400 truncate">
+                                <div className="w-20 shrink-0 text-right text-xs text-muted-foreground truncate">
                                     {category}
                                 </div>
-                                <div className="flex-1 bg-white/5 rounded-full h-5 overflow-hidden">
+                                <div className="flex-1 bg-card rounded-full h-5 overflow-hidden">
                                     <div
                                         className={`h-full rounded-full ${color} opacity-70 transition-all duration-500`}
                                         style={{ width: `${barWidth}%` }}
                                     />
                                 </div>
-                                <div className="w-20 shrink-0 text-xs text-slate-400 tabular-nums">
+                                <div className="w-20 shrink-0 text-xs text-muted-foreground tabular-nums">
                                     {count.toLocaleString()} 件
-                                    <span className="text-slate-600 ml-1">({pct}%)</span>
+                                    <span className="text-muted-foreground/70 ml-1">({pct}%)</span>
                                 </div>
                             </div>
                         )
                     })}
                     {data.every(d => d.count === 0) && (
-                        <p className="text-sm text-slate-500 text-center py-4">データがありません</p>
+                        <p className="text-sm text-muted-foreground text-center py-4">データがありません</p>
                     )}
                 </div>
             </CardContent>

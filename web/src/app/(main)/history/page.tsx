@@ -23,7 +23,7 @@ export default function HistoryPage() {
 
     if (!interactions) {
         return (
-            <div className="min-h-screen flex items-center justify-center text-slate-500">
+            <div className="min-h-screen flex items-center justify-center text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin" />
             </div>
         )
@@ -35,7 +35,7 @@ export default function HistoryPage() {
     const HistoryList = ({ items }: { items: LocalInteraction[] }) => {
         if (items.length === 0) {
             return (
-                <div className="text-center py-12 text-slate-500">
+                <div className="text-center py-12 text-muted-foreground">
                     履歴はありません
                 </div>
             )
@@ -45,26 +45,26 @@ export default function HistoryPage() {
             <ScrollArea className="h-[600px] w-full pr-4">
                 <div className="space-y-4">
                     {items.map((item) => (
-                        <Card key={`${item.article_id}-${item.type}`} className="bg-white/5 border-white/10 hover:bg-white/10 transition-colors">
+                        <Card key={`${item.article_id}-${item.type}`} className="bg-card border-border hover:bg-secondary transition-colors">
                             <CardContent className="p-4 flex items-start justify-between gap-4">
                                 <div className="space-y-2">
-                                    <h4 className="font-medium text-slate-200 line-clamp-2">
-                                        <Link href={`/article/${item.article_id}`} className="hover:text-sky-400 transition-colors flex items-center gap-2">
+                                    <h4 className="font-medium text-foreground line-clamp-2">
+                                        <Link href={`/article/${item.article_id}`} className="hover:text-primary transition-colors flex items-center gap-2">
                                             {item.title || '（タイトル不明）'}
                                         </Link>
                                     </h4>
-                                    <div className="flex items-center gap-3 text-xs text-slate-400">
+                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                         <span className="flex items-center gap-1">
                                             <Clock className="w-3 h-3" />
                                             {new Date(item.created_at).toLocaleString('ja-JP')}
                                         </span>
                                         {item.category && (
-                                            <Badge variant="secondary" className="bg-slate-800 text-slate-300 text-[10px] h-5 px-1.5">
+                                            <Badge variant="secondary" className="bg-secondary text-zinc-700 text-[10px] h-5 px-1.5">
                                                 {item.category.split(',')[0]}
                                             </Badge>
                                         )}
                                         {item.type === 'deep_dive' && (
-                                            <Badge variant="outline" className="text-indigo-400 border-indigo-500/30 text-[10px] h-5 px-1.5">
+                                            <Badge variant="outline" className="text-indigo-600 border-indigo-200 text-[10px] h-5 px-1.5">
                                                 Deep Dive
                                             </Badge>
                                         )}
@@ -75,7 +75,7 @@ export default function HistoryPage() {
                                         href={item.link}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-slate-500 hover:text-slate-300"
+                                        className="text-muted-foreground hover:text-zinc-700"
                                     >
                                         <ExternalLink className="w-4 h-4" />
                                     </a>
@@ -93,25 +93,23 @@ export default function HistoryPage() {
             <div className="max-w-7xl mx-auto space-y-8">
                 <header className="flex items-center gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-400">
-                            Activity History
-                        </h1>
-                        <p className="text-slate-400">閲覧履歴と非表示設定の管理（この端末内のデータ）</p>
+                        <h1 className="text-xl font-bold tracking-tight">履歴</h1>
+                        <p className="text-muted-foreground">閲覧履歴と非表示設定の管理（この端末内のデータ）</p>
                     </div>
                 </header>
 
                 <Tabs defaultValue="viewed" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 bg-white/5 p-1 mb-8">
-                        <TabsTrigger value="viewed" className="data-[state=active]:bg-sky-500/20 data-[state=active]:text-sky-400">
+                    <TabsList className="grid w-full grid-cols-2 bg-card p-1 mb-8">
+                        <TabsTrigger value="viewed" className="data-[state=active]:bg-accent data-[state=active]:text-primary">
                             閲覧履歴 ({viewed.length})
                         </TabsTrigger>
-                        <TabsTrigger value="excluded" className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400">
+                        <TabsTrigger value="excluded" className="data-[state=active]:bg-red-50 data-[state=active]:text-red-600">
                             非表示リスト ({excluded.length})
                         </TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="viewed">
-                        <Card className="border-white/10 bg-black/20 backdrop-blur-sm">
+                        <Card className="border-border bg-card">
                             <CardHeader>
                                 <CardTitle className="text-lg">最近読んだ記事</CardTitle>
                                 <CardDescription>過去の閲覧・分析履歴</CardDescription>
@@ -123,9 +121,9 @@ export default function HistoryPage() {
                     </TabsContent>
 
                     <TabsContent value="excluded">
-                        <Card className="border-white/10 bg-black/20 backdrop-blur-sm">
+                        <Card className="border-border bg-card">
                             <CardHeader>
-                                <CardTitle className="text-lg text-red-400 flex items-center gap-2">
+                                <CardTitle className="text-lg text-red-600 flex items-center gap-2">
                                     <XCircle className="w-5 h-5" />
                                     興味なしとして除外
                                 </CardTitle>

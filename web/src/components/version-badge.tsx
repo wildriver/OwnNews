@@ -14,7 +14,7 @@ export function VersionBadge() {
 
   return (
     <div className="fixed bottom-2 right-3 z-50 pointer-events-none">
-      <span className="text-[10px] text-slate-700 font-mono select-none">
+      <span className="text-[10px] text-muted-foreground/50 font-mono select-none">
         {label}
       </span>
     </div>

@@ -53,59 +53,55 @@
 }
 
 :root {
-  /* Deep Night Theme (Default) */
-  --background: #0F172A;
-  /* Deep Night Blue */
-  --foreground: #F8FAFC;
-  /* Slate 50 */
+  /* Clean Light Theme — 情報的健康(食事メタファー)の世界観
+     紙白の背景 + 白カード + 墨文字 + 健康を示す緑アクセント */
+  --background: #F7F7F5;
+  --foreground: #1A1C1A;
 
-  --card: #1E293B;
-  /* Slate 800 */
-  --card-foreground: #F8FAFC;
+  --card: #FFFFFF;
+  --card-foreground: #1A1C1A;
 
-  --popover: #0F172A;
-  --popover-foreground: #F8FAFC;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A1C1A;
 
-  --primary: #38BDF8;
-  /* Sky 400 */
-  --primary-foreground: #0F172A;
+  /* 緑 = 健康/鮮度。バブル内・主要操作のアクセント */
+  --primary: #0E9F6E;
+  --primary-foreground: #FFFFFF;
 
-  --secondary: #818CF8;
-  /* Indigo 400 */
-  --secondary-foreground: #F8FAFC;
+  --secondary: #EEF1EE;
+  --secondary-foreground: #24292B;
 
-  --muted: #1E293B;
-  --muted-foreground: #94A3B8;
-  /* Slate 400 */
+  --muted: #F0F1EF;
+  --muted-foreground: #6E7672;
 
-  --accent: #1E293B;
-  --accent-foreground: #F8FAFC;
+  --accent: #E6F5EE;
+  --accent-foreground: #0B7A55;
 
-  --destructive: #ef4444;
-  --destructive-foreground: #F8FAFC;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
 
-  --border: rgba(255, 255, 255, 0.1);
-  --input: #1E293B;
-  --ring: #38BDF8;
+  --border: #E5E7E3;
+  --input: #E5E7E3;
+  --ring: #0E9F6E;
 
   --radius: 0.5rem;
 
   /* Sidebar */
-  --sidebar: #0F172A;
-  --sidebar-foreground: #F8FAFC;
-  --sidebar-primary: #38BDF8;
-  --sidebar-primary-foreground: #0F172A;
-  --sidebar-accent: #1E293B;
-  --sidebar-accent-foreground: #F8FAFC;
-  --sidebar-border: rgba(255, 255, 255, 0.1);
-  --sidebar-ring: #38BDF8;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #1A1C1A;
+  --sidebar-primary: #0E9F6E;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E6F5EE;
+  --sidebar-accent-foreground: #0B7A55;
+  --sidebar-border: #E5E7E3;
+  --sidebar-ring: #0E9F6E;
 
-  /* Charts */
-  --chart-1: #38BDF8;
-  --chart-2: #818CF8;
-  --chart-3: #22d3ee;
-  --chart-4: #a78bfa;
-  --chart-5: #34d399;
+  /* Charts — 緑基調+補色。栄養素5軸にも対応 */
+  --chart-1: #0E9F6E;
+  --chart-2: #2563EB;
+  --chart-3: #D97706;
+  --chart-4: #7C3AED;
+  --chart-5: #DB2777;
 }
 
 .dark {
@@ -127,31 +123,40 @@
     /* Hide broken icon and alt text until JS handles it */
   }
 
-  /* Filter Strength Slider */
+  /* Filter Strength Slider — 緑(バブル内)→琥珀(視野を広げる) */
   .filter-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
-    background: #f8fafc;
-    border: 2px solid #38bdf8;
+    background: #ffffff;
+    border: 2px solid #0E9F6E;
     cursor: pointer;
-    box-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
-    transition: box-shadow 0.2s;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform 0.15s;
   }
 
   .filter-slider::-webkit-slider-thumb:hover {
-    box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
+    transform: scale(1.1);
   }
 
   .filter-slider::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
-    background: #f8fafc;
-    border: 2px solid #38bdf8;
+    background: #ffffff;
+    border: 2px solid #0E9F6E;
     cursor: pointer;
-    box-shadow: 0 0 6px rgba(56, 189, 248, 0.4);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
+
+  /* 数値・スコアは常に等幅数字（計測値の世界観） */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 横スクロールチップ列のスクロールバー非表示 */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }

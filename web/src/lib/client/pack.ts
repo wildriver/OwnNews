@@ -62,6 +62,9 @@ async function syncPack(): Promise<number> {
         return data.articles?.length || 0
     } catch (e) {
         console.warn('Pack sync failed (using cache):', e)
+        // 失敗時もタイムスタンプを更新してリトライストームを防ぐ
+        // （MIN_SYNC_INTERVAL経過後に自然に再試行される）
+        await setKV('pack_last_fetched_ms', Date.now())
         return 0
     }
 }

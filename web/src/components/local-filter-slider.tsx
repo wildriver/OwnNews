@@ -1,11 +1,10 @@
 'use client'
 
 // フィルタ強度スライダー（完全ローカル版）
-// サーバ往復なしで即座にフィードを再計算する。値はIndexedDBに保存され、
-// 個人Supabase設定時はバックグラウンドで同期される。
+// サーバ往復なしで即座にフィードを再計算する。
+// 緑（じぶんのバブル内）→ 琥珀（視野を広げる）の意味論を色で示す。
 
-import { useState, useRef } from 'react'
-import { SlidersHorizontal } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
 
 interface LocalFilterSliderProps {
     value: number
@@ -16,9 +15,10 @@ export function LocalFilterSlider({ value, onChange }: LocalFilterSliderProps) {
     const [local, setLocal] = useState(value)
     const rafRef = useRef<number | null>(null)
 
+    useEffect(() => { setLocal(value) }, [value])
+
     const handleChange = (v: number) => {
         setLocal(v)
-        // 再計算は軽い（全部ローカル）のでrAFで間引くだけで即時反映
         if (rafRef.current) cancelAnimationFrame(rafRef.current)
         rafRef.current = requestAnimationFrame(() => onChange(v))
     }
@@ -31,42 +31,33 @@ export function LocalFilterSlider({ value, onChange }: LocalFilterSliderProps) {
         return '広く見る'
     }
 
-    const getColor = () => {
-        if (local <= 0.3) return 'from-sky-400 to-indigo-400'
-        if (local <= 0.7) return 'from-indigo-400 to-amber-400'
-        return 'from-amber-400 to-emerald-400'
-    }
-
     return (
-        <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3 backdrop-blur-sm w-full md:w-auto">
-            <SlidersHorizontal className="w-4 h-4 flex-shrink-0 text-slate-400" />
-
-            <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
-                <div className="flex justify-between items-center">
-                    <span className="text-[11px] text-slate-500">バブルの外へ</span>
-                    <span className={`text-[11px] font-bold text-transparent bg-clip-text bg-gradient-to-r ${getColor()}`}>
+        <div className="flex items-center gap-3 bg-card border border-border rounded-lg px-3 py-2 w-full md:w-auto">
+            <div className="flex flex-col gap-1 flex-1 min-w-[190px]">
+                <div className="flex justify-between items-baseline">
+                    <span className="text-[10px] text-muted-foreground">視野の広さ</span>
+                    <span className={`text-[11px] font-bold ${local <= 0.35 ? 'text-primary' : local <= 0.65 ? 'text-foreground' : 'text-amber-600'}`}>
                         {getLabel()}
                     </span>
                 </div>
 
-                <div className="relative w-full">
-                    <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={local}
-                        onChange={(e) => handleChange(parseFloat(e.target.value))}
-                        className="filter-slider w-full h-1.5 appearance-none rounded-full cursor-pointer"
-                        style={{
-                            background: `linear-gradient(to right, #38bdf8 0%, #818cf8 40%, #f59e0b 70%, #34d399 100%)`,
-                        }}
-                    />
-                </div>
+                <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={local}
+                    onChange={(e) => handleChange(parseFloat(e.target.value))}
+                    aria-label="フィルタ強度（バブル外の記事の割合）"
+                    className="filter-slider w-full h-1 appearance-none rounded-full cursor-pointer"
+                    style={{
+                        background: `linear-gradient(to right, #0E9F6E 0%, #7BB88F 45%, #D97706 100%)`,
+                    }}
+                />
 
-                <div className="flex justify-between text-[9px] text-slate-600">
-                    <span>🫧 バブル内</span>
-                    <span>🌍 広く見る</span>
+                <div className="flex justify-between text-[9px] text-muted-foreground/80">
+                    <span>じぶんのバブル</span>
+                    <span>視野を広げる</span>
                 </div>
             </div>
         </div>

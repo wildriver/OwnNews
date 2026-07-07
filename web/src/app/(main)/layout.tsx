@@ -1,10 +1,11 @@
 import { AppSidebar } from '@/components/app-sidebar'
+import { MobileNav } from '@/components/mobile-nav'
 import { VersionBadge } from '@/components/version-badge'
 
 export const runtime = 'edge'
 
-// ローカルファースト化に伴い、レイアウトでの認証チェックと
-// サーバ側ヘルス統計取得を廃止。サイドバーの統計はクライアントで計算する。
+// ローカルファースト: レイアウトでの認証チェック・サーバ側統計取得はなし。
+// デスクトップ=サイドバー / モバイル=ボトムナビ。
 export default function MainLayout({
     children,
 }: {
@@ -13,9 +14,10 @@ export default function MainLayout({
     return (
         <div className="flex h-screen overflow-hidden bg-background text-foreground">
             <AppSidebar />
-            <main className="flex-1 overflow-y-auto w-full">
+            <main className="flex-1 overflow-y-auto w-full pb-16 md:pb-0">
                 {children}
             </main>
+            <MobileNav />
             <VersionBadge />
         </div>
     )

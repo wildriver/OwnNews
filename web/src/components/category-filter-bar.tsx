@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
 
 // カテゴリ一覧（CEEK.JPのRSSタグ + 公式RSSソースの既定カテゴリ）
 // lib/types.ts の ONBOARDING_CATEGORIES と揃えること
@@ -22,7 +21,7 @@ export const RSS_CATEGORIES = [
 
 const STORAGE_KEY = 'ownnews_excluded_categories'
 
-function loadExcluded(): Set<string> {
+export function loadExcluded(): Set<string> {
   if (typeof window === 'undefined') return new Set()
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -33,7 +32,7 @@ function loadExcluded(): Set<string> {
   return new Set()
 }
 
-function saveExcluded(excluded: Set<string>) {
+export function saveExcluded(excluded: Set<string>) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(excluded)))
   } catch { /* ignore */ }
@@ -43,6 +42,8 @@ interface CategoryFilterBarProps {
   onExcludeChange: (excluded: Set<string>) => void
 }
 
+// ジャンルON/OFFチップ列。1行の横スクロールで密度を保つ。
+// 除外状態は localStorage に永続化され、フィード生成（rankFeed）にも反映される。
 export function CategoryFilterBar({ onExcludeChange }: CategoryFilterBarProps) {
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
 
@@ -51,26 +52,26 @@ export function CategoryFilterBar({ onExcludeChange }: CategoryFilterBarProps) {
     const saved = loadExcluded()
     if (saved.size > 0) {
       setExcluded(saved)
-      onExcludeChange(saved)
+      // 親のsetStateはレンダー外（マクロタスク）で呼ぶ
+      setTimeout(() => onExcludeChange(saved), 0)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 注意: onExcludeChange（親のsetState）をsetExcludedのupdater内で呼ぶと
+  // "Cannot update while rendering" エラーになるため、必ずupdaterの外で呼ぶ
   const toggle = (cat: string) => {
-    setExcluded(prev => {
-      const next = new Set(prev)
-      if (next.has(cat)) {
-        next.delete(cat)
-      } else {
-        next.add(cat)
-      }
-      saveExcluded(next)
-      onExcludeChange(next)
-      return next
-    })
+    const next = new Set(excluded)
+    if (next.has(cat)) {
+      next.delete(cat)
+    } else {
+      next.add(cat)
+    }
+    setExcluded(next)
+    saveExcluded(next)
+    onExcludeChange(next)
   }
 
-  const allOff = excluded.size === RSS_CATEGORIES.length
   const resetAll = () => {
     const empty = new Set<string>()
     setExcluded(empty)
@@ -79,35 +80,29 @@ export function CategoryFilterBar({ onExcludeChange }: CategoryFilterBarProps) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 mb-6">
-      <span className="text-xs text-slate-500 mr-1 shrink-0">ジャンル:</span>
+    <div className="flex items-center gap-1.5 mb-3 overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
       {RSS_CATEGORIES.map(cat => {
         const isOff = excluded.has(cat)
         return (
-          <Button
+          <button
             key={cat}
-            variant="ghost"
-            size="sm"
             onClick={() => toggle(cat)}
-            className={`h-6 px-2 text-xs rounded-full transition-all ${
-              isOff
-                ? 'text-slate-600 bg-transparent border border-slate-800 line-through opacity-50'
-                : 'text-sky-300 bg-sky-500/10 border border-sky-500/20 hover:bg-sky-500/20'
-            }`}
+            className={`shrink-0 h-7 px-2.5 text-[11px] font-medium rounded-full border transition-colors ${isOff
+              ? 'text-muted-foreground/60 bg-transparent border-border line-through'
+              : 'text-accent-foreground bg-accent border-transparent hover:opacity-80'
+              }`}
           >
             {cat}
-          </Button>
+          </button>
         )
       })}
-      {excluded.size > 0 && !allOff && (
-        <Button
-          variant="ghost"
-          size="sm"
+      {excluded.size > 0 && (
+        <button
           onClick={resetAll}
-          className="h-6 px-2 text-xs text-slate-500 hover:text-slate-300"
+          className="shrink-0 h-7 px-2.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
           すべてON
-        </Button>
+        </button>
       )}
     </div>
   )

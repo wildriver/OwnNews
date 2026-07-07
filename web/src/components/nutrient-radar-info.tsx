@@ -13,9 +13,9 @@ interface NutrientRadarInfoProps {
 
 export function NutrientRadarInfo({ averages }: NutrientRadarInfoProps) {
     return (
-        <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
+        <Card className="border-border bg-card">
             <CardHeader>
-                <CardTitle className="text-lg font-bold text-slate-200">Nutrient Balance</CardTitle>
+                <CardTitle className="text-lg font-bold text-foreground">栄養バランス</CardTitle>
                 <CardDescription>読んだ記事の栄養素平均</CardDescription>
             </CardHeader>
             <CardContent className="h-[300px]">

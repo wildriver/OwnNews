@@ -10,22 +10,22 @@ interface KeywordBarProps {
 export function KeywordBar({ data }: KeywordBarProps) {
     if (data.length === 0) {
         return (
-            <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
+            <Card className="border-border bg-card">
                 <CardHeader>
-                    <CardTitle className="text-lg font-bold text-slate-200">注目キーワード</CardTitle>
+                    <CardTitle className="text-lg font-bold text-foreground">注目キーワード</CardTitle>
                     <CardDescription>よく見ている記事のキーワード Top10</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[300px] flex items-center justify-center">
-                    <p className="text-slate-500 text-sm">まだデータがありません</p>
+                    <p className="text-muted-foreground text-sm">まだデータがありません</p>
                 </CardContent>
             </Card>
         )
     }
 
     return (
-        <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
+        <Card className="border-border bg-card">
             <CardHeader>
-                <CardTitle className="text-lg font-bold text-slate-200">注目キーワード</CardTitle>
+                <CardTitle className="text-lg font-bold text-foreground">注目キーワード</CardTitle>
                 <CardDescription>よく見ている記事のキーワード Top10</CardDescription>
             </CardHeader>
             <CardContent className="h-[300px]">
@@ -33,7 +33,7 @@ export function KeywordBar({ data }: KeywordBarProps) {
                     <BarChart data={data} layout="vertical" margin={{ left: 10, right: 20 }}>
                         <XAxis
                             type="number"
-                            stroke="#94a3b8"
+                            stroke="#6E7672"
                             fontSize={11}
                             tickLine={false}
                             axisLine={false}
@@ -42,21 +42,21 @@ export function KeywordBar({ data }: KeywordBarProps) {
                         <YAxis
                             type="category"
                             dataKey="keyword"
-                            stroke="#94a3b8"
+                            stroke="#6E7672"
                             fontSize={11}
                             tickLine={false}
                             axisLine={false}
                             width={80}
                         />
                         <Tooltip
-                            contentStyle={{ backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc' }}
-                            itemStyle={{ color: '#38bdf8' }}
-                            cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                            labelStyle={{ color: '#94a3b8' }}
+                            contentStyle={{ backgroundColor: '#1e293b', borderColor: '#E5E7E3', color: '#1A1C1A' }}
+                            itemStyle={{ color: '#0E9F6E' }}
+                            cursor={{ fill: '#F0F1EF' }}
+                            labelStyle={{ color: '#6E7672' }}
                         />
                         <Bar
                             dataKey="count"
-                            fill="#818CF8"
+                            fill="#2563EB"
                             radius={[0, 4, 4, 0]}
                             name="件数"
                         />

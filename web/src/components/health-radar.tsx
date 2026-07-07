@@ -22,22 +22,22 @@ export function HealthRadarInfo({ distribution, label }: HealthRadarInfoProps) {
     }))
 
     return (
-        <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
+        <Card className="border-border bg-card">
             <CardHeader>
-                <CardTitle className="text-lg font-bold text-slate-200">Information Health</CardTitle>
+                <CardTitle className="text-lg font-bold text-foreground">ジャンルバランス</CardTitle>
                 <CardDescription>{label || 'カテゴリー摂取バランス'}</CardDescription>
             </CardHeader>
             <CardContent className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                     <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data}>
-                        <PolarGrid stroke="rgba(255,255,255,0.1)" />
-                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                        <PolarGrid stroke="#E5E7E3" />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#6E7672', fontSize: 12 }} />
                         <Radar
                             name="My Feed"
                             dataKey="A"
-                            stroke="#38BDF8"
+                            stroke="#0E9F6E"
                             strokeWidth={2}
-                            fill="#38BDF8"
+                            fill="#0E9F6E"
                             fillOpacity={0.3}
                         />
                     </RadarChart>

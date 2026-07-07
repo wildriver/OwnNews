@@ -1,9 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { X, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import Link from 'next/link'
@@ -11,30 +8,54 @@ import Link from 'next/link'
 import { GroupedArticle } from '@/lib/types'
 import { recordInteraction } from '@/lib/client/interactions'
 import { InteractionType } from '@/lib/client/types'
+import { extractSourceName } from '@/lib/news'
 
 interface ArticleCardProps {
     article: GroupedArticle
     outsideBubble?: boolean
     onCategoryClick?: (category: string) => void
+    /** row = 高密度リスト行（既定） / featured = セクション先頭の大型カード */
+    variant?: 'row' | 'featured'
 }
 
-export function ArticleCard({ article, outsideBubble, onCategoryClick }: ArticleCardProps) {
+// 栄養素のうち特徴的なもの（60以上）を最大2つ、控えめなテキストラベルで示す
+const NUTRIENT_DEFS = [
+    { key: 'fact_score', label: '事実', dot: 'bg-blue-500' },
+    { key: 'context_score', label: '背景', dot: 'bg-amber-500' },
+    { key: 'perspective_score', label: '視点', dot: 'bg-violet-500' },
+    { key: 'emotion_score', label: '感情', dot: 'bg-pink-500' },
+    { key: 'immediacy_score', label: '速報', dot: 'bg-cyan-600' },
+] as const
+
+function topNutrients(article: GroupedArticle) {
+    return NUTRIENT_DEFS
+        .map(d => ({ ...d, score: (article as unknown as Record<string, number>)[d.key] ?? 0 }))
+        .filter(d => d.score >= 60)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 2)
+}
+
+function formatDate(published?: string, collectedAt?: string): string {
+    const raw = published || collectedAt || ''
+    const d = new Date(raw)
+    if (isNaN(d.getTime())) return raw.substring(0, 10)
+    const now = new Date()
+    const sameDay = d.toDateString() === now.toDateString()
+    if (sameDay) return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+    return `${d.getMonth() + 1}/${d.getDate()}`
+}
+
+export function ArticleCard({ article, outsideBubble, onCategoryClick, variant = 'row' }: ArticleCardProps) {
     const [isVisible, setIsVisible] = useState(true)
     const [expanded, setExpanded] = useState(false)
-    const [imageLoaded, setImageLoaded] = useState(true) // Start visible to avoid hydration mismatch
     const [imageError, setImageError] = useState(false)
-    const categories = article.category.split(',').filter(c => c.trim())
-    const relatedCount = article.related?.length || 0;
 
-    // Nutrient scores with defaults
-    const factScore = article.fact_score ?? 0;
-    const contextScore = article.context_score ?? 0;
-    const perspectiveScore = article.perspective_score ?? 0;
-    const emotionScore = article.emotion_score ?? 0;
-    const immediacyScore = article.immediacy_score ?? 0;
-    const hasNutrients = factScore > 0 || contextScore > 0;
+    const category = (article.category || '').split(',').map(c => c.trim()).filter(Boolean)[0]
+    const relatedCount = article.related?.length || 0
+    const nutrients = topNutrients(article)
+    const source = article.source || extractSourceName(article.link)
+    const hasImage = !!article.image_url && !imageError
 
-    // 嗜好データはローカル（IndexedDB + 設定時は個人Supabase）にのみ記録する
     const logInteraction = async (type: InteractionType) => {
         await recordInteraction(article.id, type)
     }
@@ -42,141 +63,156 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick }: Article
     const handleNotInterested = async (e: React.MouseEvent) => {
         e.preventDefault()
         e.stopPropagation()
-        setIsVisible(false) // Optimistic update
-        toast.info("記事を表示しないように設定しました")
+        setIsVisible(false)
+        toast.info("この記事を表示しないようにしました")
         await logInteraction('not_interested')
     }
 
     if (!isVisible) return null
 
-    const hasImage = article.image_url && !imageError
-
-    const cardClass = outsideBubble
-        ? "h-full border-amber-500/15 bg-amber-950/10 backdrop-blur-sm hover:border-amber-500/30 hover:shadow-lg hover:shadow-amber-900/10 transition-all duration-300 group flex flex-col overflow-hidden relative opacity-80 hover:opacity-100"
-        : "h-full border-white/10 bg-white/5 backdrop-blur-sm hover:border-sky-500/30 hover:shadow-lg hover:shadow-sky-900/10 transition-all duration-300 group flex flex-col overflow-hidden relative"
-
-    return (
-        <Card className={cardClass}>
+    // ---- 共通パーツ ----
+    const metaChips = (
+        <div className="flex items-center gap-1.5 min-w-0">
             {outsideBubble && (
-                <div className="absolute top-2 left-2 z-10">
-                    <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[9px] px-1.5 py-0 h-4">
-                        🌍 バブル外
-                    </Badge>
+                <span className="shrink-0 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-1 leading-4">
+                    バブル外
+                </span>
+            )}
+            {category && (
+                <button
+                    className={`shrink-0 text-[10px] font-medium text-accent-foreground bg-accent rounded-sm px-1 leading-4 ${onCategoryClick ? 'hover:opacity-70' : 'cursor-default'}`}
+                    onClick={onCategoryClick ? (e) => {
+                        e.preventDefault(); e.stopPropagation(); onCategoryClick(category)
+                    } : undefined}
+                    tabIndex={-1}
+                >
+                    {category}
+                </button>
+            )}
+            {relatedCount > 0 && (
+                <span className="shrink-0 text-[10px] font-medium text-primary border border-primary/30 rounded-sm px-1 leading-4 tnum">
+                    {relatedCount + 1}紙
+                </span>
+            )}
+        </div>
+    )
+
+    const metaBottom = (
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground min-w-0">
+            <span className="truncate font-medium">{source}</span>
+            <span className="shrink-0 tnum">{formatDate(article.published, (article as unknown as { collected_at?: string }).collected_at)}</span>
+            {nutrients.map(n => (
+                <span key={n.key} className="hidden sm:inline-flex items-center gap-1 shrink-0">
+                    <span className={`w-1.5 h-1.5 rounded-full ${n.dot}`} />
+                    {n.label}
+                </span>
+            ))}
+        </div>
+    )
+
+    const dismissButton = (
+        <button
+            onClick={handleNotInterested}
+            title="興味なし（今後の推薦に反映）"
+            className="absolute top-1.5 right-1.5 z-10 h-6 w-6 rounded-full flex items-center justify-center text-muted-foreground/0 group-hover:text-muted-foreground group-hover:bg-secondary hover:!text-destructive transition-colors"
+        >
+            <X className="h-3.5 w-3.5" />
+        </button>
+    )
+
+    const relatedList = relatedCount > 0 && (
+        <div className="mt-1">
+            <button
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(v => !v) }}
+            >
+                他{relatedCount}紙の報道
+                <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            </button>
+            {expanded && (
+                <div className="mt-1 space-y-1">
+                    {article.related?.slice(0, 3).map(r => (
+                        <Link
+                            key={r.id}
+                            href={`/article/${r.id}`}
+                            onClick={(e) => { e.stopPropagation(); logInteraction('view') }}
+                            className="flex items-baseline gap-1.5 group/rel"
+                        >
+                            <span className="shrink-0 text-[10px] text-muted-foreground/70">
+                                {r.source || extractSourceName(r.link)}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground line-clamp-1 group-hover/rel:text-primary transition-colors">
+                                {r.title}
+                            </span>
+                        </Link>
+                    ))}
                 </div>
             )}
-            <div className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 rounded-full bg-black/40 hover:bg-red-500/80 text-white/70 hover:text-white backdrop-blur-md"
-                    onClick={handleNotInterested}
-                    title="興味なし"
-                >
-                    <X className="h-4 w-4" />
-                </Button>
-            </div>
+        </div>
+    )
 
-            <Link href={`/article/${article.id}`} className="block flex-grow" onClick={() => logInteraction('view')}>
+    // ---- featured: セクション先頭の大型カード ----
+    if (variant === 'featured') {
+        return (
+            <div className="relative group">
+                {dismissButton}
+                <Link href={`/article/${article.id}`} onClick={() => logInteraction('view')} className="block">
+                    {hasImage && (
+                        <div className="relative w-full aspect-[2/1] overflow-hidden bg-muted">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                src={article.image_url!}
+                                alt=""
+                                className="w-full h-full object-cover"
+                                onError={() => setImageError(true)}
+                            />
+                        </div>
+                    )}
+                    <div className="px-3 py-2.5 space-y-1">
+                        {metaChips}
+                        <h3 className="text-[15px] font-bold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                            {article.title}
+                        </h3>
+                        <p className="text-[12px] text-muted-foreground leading-relaxed line-clamp-2">
+                            {article.summary}
+                        </p>
+                        {metaBottom}
+                    </div>
+                </Link>
+                {relatedList && <div className="px-3 pb-2">{relatedList}</div>}
+            </div>
+        )
+    }
+
+    // ---- row: 高密度リスト行 ----
+    return (
+        <div className="relative group">
+            {dismissButton}
+            <Link
+                href={`/article/${article.id}`}
+                onClick={() => logInteraction('view')}
+                className="flex gap-3 px-3 py-2.5"
+            >
+                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                    {metaChips}
+                    <h3 className="text-[13px] font-bold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                        {article.title}
+                    </h3>
+                    <div className="mt-auto">{metaBottom}</div>
+                </div>
                 {hasImage && (
-                    <div className="relative h-32 w-full overflow-hidden bg-white/5">
+                    <div className="shrink-0 w-[88px] h-[64px] rounded-md overflow-hidden bg-muted">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src={article.image_url!}
                             alt=""
-                            className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-                            onLoad={() => setImageLoaded(true)}
+                            className="w-full h-full object-cover"
                             onError={() => setImageError(true)}
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent" />
                     </div>
                 )}
-
-                <CardHeader className="p-3 pb-1 space-y-1">
-                    <div className="flex flex-wrap gap-1.5 pr-6">
-                        {relatedCount > 0 && (
-                            <Badge
-                                variant="outline"
-                                className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px] px-1.5 py-0 h-5 font-bold"
-                            >
-                                {relatedCount + 1} SOURCES
-                            </Badge>
-                        )}
-                        {categories.slice(0, 2).map((cat) => (
-                            <Badge
-                                key={cat}
-                                variant="secondary"
-                                className={`bg-sky-500/10 text-sky-400 border-sky-500/20 text-xs px-1.5 py-0 h-5 ${onCategoryClick ? 'cursor-pointer hover:bg-sky-500/30 transition-colors' : ''}`}
-                                onClick={onCategoryClick ? (e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    onCategoryClick(cat.trim())
-                                } : undefined}
-                            >
-                                {cat}
-                            </Badge>
-                        ))}
-                        <span className="text-xs text-slate-500 flex items-center ml-auto">
-                            {article.published?.substring(0, 10)}
-                        </span>
-                    </div>
-
-                    {/* Nutrient Badges (Mini) */}
-                    {hasNutrients && (
-                        <div className="flex flex-wrap gap-1 mb-1">
-                            {factScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-blue-500/30 text-blue-400 bg-blue-500/10">事実高</Badge>}
-                            {contextScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-amber-500/30 text-amber-400 bg-amber-500/10">背景深</Badge>}
-                            {perspectiveScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-purple-500/30 text-purple-400 bg-purple-500/10">視点多</Badge>}
-                            {emotionScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-pink-500/30 text-pink-400 bg-pink-500/10">感情的</Badge>}
-                            {immediacyScore > 50 && <Badge variant="outline" className="text-xs py-0 h-5 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">速報</Badge>}
-                        </div>
-                    )}
-
-                    <CardTitle className="text-sm font-bold leading-snug group-hover:text-sky-400 transition-colors line-clamp-2">
-                        {article.title}
-                    </CardTitle>
-                </CardHeader>
-
-                <CardContent className="p-3 pt-0">
-                    <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                        {article.summary}
-                    </p>
-                </CardContent>
             </Link>
-
-            {/* まとめられた記事（折りたたみ） */}
-            {relatedCount > 0 && (
-                <div className="border-t border-white/10 px-3 py-1.5">
-                    <button
-                        className="w-full flex items-center justify-between text-[11px] text-slate-500 hover:text-slate-300 transition-colors"
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(v => !v) }}
-                    >
-                        <span>
-                            まとめられた記事{' '}
-                            <span className="text-emerald-400 font-medium">{relatedCount}件</span>
-                        </span>
-                        <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
-                    </button>
-                    {expanded && (
-                        <div className="mt-1.5 space-y-1.5 pb-1">
-                            {article.related?.slice(0, 3).map(r => (
-                                <Link
-                                    key={r.id}
-                                    href={`/article/${r.id}`}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="flex items-start gap-1.5 group/rel"
-                                >
-                                    <span className="shrink-0 text-[10px] text-slate-600">
-                                        {(() => { try { return new URL(r.link).hostname.replace('www.', '') } catch { return '記事' } })()}
-                                    </span>
-                                    <span className="text-[11px] text-slate-400 line-clamp-1 group-hover/rel:text-sky-400 transition-colors">
-                                        {r.title}
-                                    </span>
-                                </Link>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
-        </Card>
+            {relatedList && <div className="px-3 pb-2 -mt-1">{relatedList}</div>}
+        </div>
     )
 }

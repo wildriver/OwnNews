@@ -8,7 +8,7 @@ interface TopicTreemapProps {
 
 // Color palette for treemap cells
 const COLORS = [
-    '#38BDF8', '#818CF8', '#34D399', '#FBBF24', '#F87171',
+    '#0E9F6E', '#2563EB', '#34D399', '#FBBF24', '#F87171',
     '#A78BFA', '#2DD4BF', '#FB923C', '#E879F9', '#60A5FA',
     '#4ADE80', '#F472B6', '#FACC15',
 ]
@@ -20,13 +20,13 @@ export function TopicTreemap({ distribution }: TopicTreemapProps) {
 
     if (entries.length === 0) {
         return (
-            <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
+            <Card className="border-border bg-card">
                 <CardHeader>
-                    <CardTitle className="text-lg font-bold text-slate-200">トピック詳細</CardTitle>
+                    <CardTitle className="text-lg font-bold text-foreground">トピック詳細</CardTitle>
                     <CardDescription>中分類別の摂取バランス</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[300px] flex items-center justify-center">
-                    <p className="text-slate-500 text-sm">まだデータがありません</p>
+                    <p className="text-muted-foreground text-sm">まだデータがありません</p>
                 </CardContent>
             </Card>
         )
@@ -37,9 +37,9 @@ export function TopicTreemap({ distribution }: TopicTreemapProps) {
     // Build treemap layout using a simple squarified algorithm approximation
     // We'll use CSS grid with calculated areas
     return (
-        <Card className="border-white/10 bg-white/5 backdrop-blur-sm">
+        <Card className="border-border bg-card">
             <CardHeader>
-                <CardTitle className="text-lg font-bold text-slate-200">トピック詳細</CardTitle>
+                <CardTitle className="text-lg font-bold text-foreground">トピック詳細</CardTitle>
                 <CardDescription>中分類別の摂取バランス</CardDescription>
             </CardHeader>
             <CardContent>
@@ -68,7 +68,7 @@ export function TopicTreemap({ distribution }: TopicTreemapProps) {
                                 >
                                     {topic}
                                 </span>
-                                <span className="text-[10px] text-slate-500 mt-0.5">
+                                <span className="text-[10px] text-muted-foreground mt-0.5">
                                     {count}件 ({Math.round(ratio * 100)}%)
                                 </span>
                             </div>

@@ -84,7 +84,7 @@ export default async function ArticlePage({
         <div className="min-h-screen bg-background text-foreground py-8 px-4">
             <div className="max-w-3xl mx-auto">
                 <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <Button variant="ghost" size="sm" asChild className="text-slate-400 hover:text-slate-200 pl-0">
+                    <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground pl-0">
                         <Link href="/">
                             <ArrowLeft className="w-4 h-4 mr-2" />
                             一覧に戻る
@@ -101,7 +101,7 @@ export default async function ArticlePage({
                                 <Badge
                                     key={cat}
                                     variant="secondary"
-                                    className="bg-sky-500/10 text-sky-400 border-sky-500/20"
+                                    className="bg-accent text-primary border-primary/25"
                                 >
                                     {cat}
                                 </Badge>
@@ -109,18 +109,18 @@ export default async function ArticlePage({
                             {article.category_medium && article.category_medium !== 'その他' && (
                                 <Badge
                                     variant="secondary"
-                                    className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                    className="bg-emerald-50 text-emerald-600 border-emerald-200"
                                 >
                                     {article.category_medium}
                                 </Badge>
                             )}
                         </div>
 
-                        <h1 className="text-3xl md:text-4xl font-bold leading-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-100 to-slate-400">
+                        <h1 className="text-2xl md:text-3xl font-bold leading-tight text-foreground">
                             {article.title}
                         </h1>
 
-                        <div className="flex items-center gap-4 text-sm text-slate-400">
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <span className="flex items-center gap-1">
                                 <Calendar className="w-4 h-4" />
                                 {article.published ? new Date(article.published).toLocaleDateString('ja-JP') : '日付不明'}
@@ -130,11 +130,11 @@ export default async function ArticlePage({
                         {/* Keyword Tags */}
                         {keywords.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 items-center">
-                                <Tag className="w-3.5 h-3.5 text-slate-500" />
+                                <Tag className="w-3.5 h-3.5 text-muted-foreground" />
                                 {keywords.map((kw: string) => (
                                     <span
                                         key={kw}
-                                        className="inline-block bg-white/5 border border-white/10 px-2 py-0.5 rounded-full text-[11px] text-slate-400"
+                                        className="inline-block bg-card border border-border px-2 py-0.5 rounded-full text-[11px] text-muted-foreground"
                                     >
                                         {kw}
                                     </span>
@@ -145,7 +145,7 @@ export default async function ArticlePage({
 
                     {/* Image */}
                     {article.image_url && (
-                        <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-white/10 shadow-2xl bg-white/5">
+                        <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-border shadow-2xl bg-card">
                             <SafeImage
                                 src={article.image_url}
                                 alt={article.title}
@@ -155,9 +155,9 @@ export default async function ArticlePage({
                     )}
 
                     {/* Content/Summary */}
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-6 md:p-8 backdrop-blur-sm">
-                        <h2 className="text-xl font-bold text-slate-200 mb-4">概要</h2>
-                        <p className="text-slate-300 leading-relaxed text-lg whitespace-pre-wrap">
+                    <div className="bg-card border border-border rounded-xl p-6 md:p-8">
+                        <h2 className="text-xl font-bold text-foreground mb-4">概要</h2>
+                        <p className="text-zinc-700 leading-relaxed text-lg whitespace-pre-wrap">
                             {article.summary}
                         </p>
                     </div>
@@ -171,13 +171,13 @@ export default async function ArticlePage({
                         const i = article.immediacy_score ?? 0
                         const hasData = f > 0 || c > 0 || p > 0 || e > 0 || i > 0
                         return (
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-sm">
-                                <h2 className="text-xl font-bold text-slate-200 mb-4 flex items-center gap-2">
-                                    <span className="text-sky-400">⚡</span> ニュースの栄養素
+                            <div className="bg-card border border-border rounded-xl p-6">
+                                <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                                    <span className="text-primary">⚡</span> ニュースの栄養素
                                 </h2>
                                 {hasData ? (
                                     <>
-                                        <p className="text-sm text-slate-400 mb-6">
+                                        <p className="text-sm text-muted-foreground mb-6">
                                             この記事に含まれる要素を5つの観点で分析しました。
                                         </p>
                                         <div className="h-[300px] w-full">
@@ -189,16 +189,16 @@ export default async function ArticlePage({
                                                 immediacy={i}
                                             />
                                         </div>
-                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4 text-xs text-slate-500 text-center">
-                                            <div>事実: <span className="text-slate-300">{f}</span></div>
-                                            <div>背景: <span className="text-slate-300">{c}</span></div>
-                                            <div>視点: <span className="text-slate-300">{p}</span></div>
-                                            <div>感情: <span className="text-slate-300">{e}</span></div>
-                                            <div>速報: <span className="text-slate-300">{i}</span></div>
+                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4 text-xs text-muted-foreground text-center">
+                                            <div>事実: <span className="text-zinc-700">{f}</span></div>
+                                            <div>背景: <span className="text-zinc-700">{c}</span></div>
+                                            <div>視点: <span className="text-zinc-700">{p}</span></div>
+                                            <div>感情: <span className="text-zinc-700">{e}</span></div>
+                                            <div>速報: <span className="text-zinc-700">{i}</span></div>
                                         </div>
                                     </>
                                 ) : (
-                                    <p className="text-sm text-slate-500 italic">
+                                    <p className="text-sm text-muted-foreground italic">
                                         この記事はまだ栄養素が分析されていません。
                                     </p>
                                 )}
@@ -208,7 +208,7 @@ export default async function ArticlePage({
 
                     {/* Main Source Button (Always Visible) */}
                     <div className="flex justify-center pt-4">
-                        <Button variant="outline" size="lg" asChild className="bg-sky-500/10 border-sky-500/20 text-sky-400 hover:bg-sky-500/20 hover:text-sky-300 gap-2 w-full max-w-sm">
+                        <Button variant="outline" size="lg" asChild className="bg-accent border-primary/25 text-primary hover:bg-accent hover:text-accent-foreground gap-2 w-full max-w-sm">
                             <a href={article.link} target="_blank" rel="noopener noreferrer">
                                 <ExternalLink className="w-5 h-5" />
                                 元の記事を読む ({article.source || new URL(article.link).hostname})
@@ -219,26 +219,26 @@ export default async function ArticlePage({
                     {/* Related Sources (Same Group) */}
                     {sameGroup.length > 0 && (
                         <div className="space-y-4 pt-6">
-                            <h3 className="text-lg font-bold text-slate-200 border-l-4 border-sky-500 pl-3">
-                                別の視点で読む ({sameGroup.length}) <span className="text-xs font-normal text-slate-500 ml-2">しきい値: {groupingThreshold.toFixed(3)}</span>
+                            <h3 className="text-lg font-bold text-foreground border-l-4 border-primary pl-3">
+                                別の視点で読む ({sameGroup.length}) <span className="text-xs font-normal text-muted-foreground ml-2">しきい値: {groupingThreshold.toFixed(3)}</span>
                             </h3>
                             <div className="grid gap-3">
                                 {sameGroup.map((src: Article & { similarity: number }) => (
                                     <Link
                                         key={src.id}
                                         href={`/article/${src.id}`}
-                                        className="p-3 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between hover:bg-white/10 transition-colors"
+                                        className="p-3 rounded-lg bg-card border border-border flex items-center justify-between hover:bg-secondary transition-colors"
                                     >
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-sm text-slate-300 line-clamp-1">{src.title}</span>
-                                                <Badge variant="outline" className="text-[9px] h-4 px-1 bg-sky-500/10 text-sky-500 border-sky-500/20">
+                                                <span className="text-sm text-zinc-700 line-clamp-1">{src.title}</span>
+                                                <Badge variant="outline" className="text-[9px] h-4 px-1 bg-accent text-primary border-primary/25">
                                                     {Math.round(src.similarity * 100)}% Match
                                                 </Badge>
                                             </div>
-                                            <span className="text-[10px] text-slate-500 uppercase">{src.source || new URL(src.link).hostname}</span>
+                                            <span className="text-[10px] text-muted-foreground uppercase">{src.source || new URL(src.link).hostname}</span>
                                         </div>
-                                        <ArrowLeft className="w-4 h-4 text-slate-500 rotate-180" />
+                                        <ArrowLeft className="w-4 h-4 text-muted-foreground rotate-180" />
                                     </Link>
                                 ))}
                             </div>
@@ -248,7 +248,7 @@ export default async function ArticlePage({
                     {/* Similar Articles (Broad Similarity) */}
                     {similarArticles.length > 0 && (
                         <div className="space-y-4 pt-6">
-                            <h3 className="text-lg font-bold text-slate-400 border-l-4 border-slate-700 pl-3">
+                            <h3 className="text-lg font-bold text-muted-foreground border-l-4 border-border pl-3">
                                 こちらの記事もおすすめ
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -256,10 +256,10 @@ export default async function ArticlePage({
                                     <Link
                                         key={src.id}
                                         href={`/article/${src.id}`}
-                                        className="group p-4 rounded-xl bg-white/5 border border-white/10 hover:border-sky-500/30 transition-all"
+                                        className="group p-4 rounded-xl bg-card border border-border hover:border-primary/30 transition-all"
                                     >
-                                        <span className="text-xs text-slate-500 uppercase mb-2 block">{src.source || new URL(src.link).hostname}</span>
-                                        <h4 className="text-sm font-medium text-slate-300 line-clamp-2 group-hover:text-sky-400 transition-colors">
+                                        <span className="text-xs text-muted-foreground uppercase mb-2 block">{src.source || new URL(src.link).hostname}</span>
+                                        <h4 className="text-sm font-medium text-zinc-700 line-clamp-2 group-hover:text-primary transition-colors">
                                             {src.title}
                                         </h4>
                                     </Link>
@@ -271,7 +271,7 @@ export default async function ArticlePage({
                     {/* Category-based Related Articles */}
                     {categoryArticles.length > 0 && (
                         <div className="space-y-4 pt-6">
-                            <h3 className="text-lg font-bold text-emerald-400 border-l-4 border-emerald-500 pl-3">
+                            <h3 className="text-lg font-bold text-emerald-600 border-l-4 border-emerald-500 pl-3">
                                 「{primaryCategory}」の他の記事
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -279,10 +279,10 @@ export default async function ArticlePage({
                                     <Link
                                         key={src.id}
                                         href={`/article/${src.id}`}
-                                        className="group p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/10 hover:border-emerald-500/30 transition-all"
+                                        className="group p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/10 hover:border-emerald-200 transition-all"
                                     >
-                                        <span className="text-xs text-slate-500 uppercase mb-2 block">{src.source || new URL(src.link).hostname}</span>
-                                        <h4 className="text-sm font-medium text-slate-300 line-clamp-2 group-hover:text-emerald-400 transition-colors">
+                                        <span className="text-xs text-muted-foreground uppercase mb-2 block">{src.source || new URL(src.link).hostname}</span>
+                                        <h4 className="text-sm font-medium text-zinc-700 line-clamp-2 group-hover:text-emerald-600 transition-colors">
                                             {src.title}
                                         </h4>
                                     </Link>
@@ -292,14 +292,14 @@ export default async function ArticlePage({
                     )}
 
                     {/* Actions */}
-                    <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-white/10">
+                    <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-border">
                         <DeepDiveDialog
                             article={article}
                             trigger={
                                 <Button
                                     variant="outline"
                                     size="lg"
-                                    className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 gap-2 flex-1"
+                                    className="bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 gap-2 flex-1"
                                 >
                                     <Sparkles className="w-5 h-5" />
                                     AIで深掘り解説

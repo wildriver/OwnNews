@@ -7,17 +7,17 @@ export default function Loading() {
       {/* Header */}
       <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <div className="h-8 w-36 bg-white/10 rounded-lg mb-2" />
-          <div className="h-4 w-52 bg-white/5 rounded" />
+          <div className="h-8 w-36 bg-secondary rounded-lg mb-2" />
+          <div className="h-4 w-52 bg-card rounded" />
         </div>
-        <div className="h-8 w-40 bg-white/10 rounded-lg" />
+        <div className="h-8 w-40 bg-secondary rounded-lg" />
       </header>
 
       {/* Category filter bar skeleton */}
       <div className="flex flex-wrap gap-1.5 mb-6">
-        <div className="h-4 w-12 bg-white/5 rounded mr-1" />
+        <div className="h-4 w-12 bg-card rounded mr-1" />
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="h-6 w-20 bg-white/10 rounded-full" />
+          <div key={i} className="h-6 w-20 bg-secondary rounded-full" />
         ))}
       </div>
 
@@ -26,20 +26,20 @@ export default function Loading() {
         {Array.from({ length: 12 }).map((_, i) => (
           <div
             key={i}
-            className="rounded-xl border border-white/10 bg-white/5 overflow-hidden flex flex-col"
+            className="rounded-xl border border-border bg-card overflow-hidden flex flex-col"
           >
             {/* Image area */}
-            <div className="h-32 bg-white/10" />
+            <div className="h-32 bg-secondary" />
             {/* Content */}
             <div className="p-3 space-y-2 flex-1">
               <div className="flex gap-1.5">
-                <div className="h-5 w-8 bg-white/10 rounded-full" />
-                <div className="h-5 w-14 bg-white/10 rounded-full" />
+                <div className="h-5 w-8 bg-secondary rounded-full" />
+                <div className="h-5 w-14 bg-secondary rounded-full" />
               </div>
-              <div className="h-4 w-full bg-white/10 rounded" />
-              <div className="h-4 w-4/5 bg-white/10 rounded" />
-              <div className="h-3 w-full bg-white/5 rounded mt-2" />
-              <div className="h-3 w-3/4 bg-white/5 rounded" />
+              <div className="h-4 w-full bg-secondary rounded" />
+              <div className="h-4 w-4/5 bg-secondary rounded" />
+              <div className="h-3 w-full bg-card rounded mt-2" />
+              <div className="h-3 w-3/4 bg-card rounded" />
             </div>
           </div>
         ))}
