@@ -11,8 +11,6 @@ export const runtime = 'edge'
 // フォールバック: R2バインディング未設定/オブジェクト未生成の場合のみ、
 //           Supabaseから直接生成する（開発環境・移行期間用）。
 
-const FULL_PACK_SIZE = 800
-
 // R2バケットの最小限の構造型（@cloudflare/workers-types に依存しない）
 interface R2BucketLike {
     get(key: string): Promise<{ text(): Promise<string> } | null>
@@ -103,22 +101,40 @@ export async function GET(request: NextRequest) {
     }
 
     // ---- フォールバック: Supabaseから直接生成 ----
+    // 注意: Supabaseの匿名ロールにはstatement timeout（約3秒）があり、
+    // 埋め込み込みで数百件を1クエリで引くとタイムアウトする。
+    // 100件ずつのページ取得に分割し、各クエリを制限時間内に収める。
     const supabase = await createClient()
 
-    let query = supabase
-        .from('articles')
-        .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at, embedding_m3')
-        .not('embedding_m3', 'is', null)
-        .order('collected_at', { ascending: false })
-        .limit(FULL_PACK_SIZE)
+    const PAGE = 100
+    const MAX_PAGES = 4  // フォールバックは最大400件（R2復旧までのつなぎ）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any[] = []
+    let queryError: string | null = null
 
-    if (since) {
-        query = query.gt('collected_at', since)
+    for (let i = 0; i < MAX_PAGES; i++) {
+        let query = supabase
+            .from('articles')
+            .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at, embedding_m3')
+            .not('embedding_m3', 'is', null)
+            .order('collected_at', { ascending: false })
+            .range(i * PAGE, i * PAGE + PAGE - 1)
+
+        if (since) {
+            query = query.gt('collected_at', since)
+        }
+
+        const { data: page, error } = await query
+        if (error) {
+            queryError = error.message
+            break
+        }
+        data.push(...(page || []))
+        if (!page || page.length < PAGE) break
     }
 
-    const { data, error } = await query
-    if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 })
+    if (data.length === 0 && queryError) {
+        return NextResponse.json({ error: queryError }, { status: 500 })
     }
 
     let latestCollectedAt = since || ''
