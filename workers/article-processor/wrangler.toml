@@ -1,6 +1,8 @@
 name = "ownnews-processor"
 main = "src/index.ts"
 compatibility_date = "2024-04-01"
+# 本番アカウント（Yutaka.arakawa@gmail.com）。別アカウントへの誤デプロイ防止のため明記
+account_id = "ee5da4b123e80074bde2fc70319e1780"
 
 [ai]
 binding = "AI"
