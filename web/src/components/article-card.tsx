@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { X, ChevronDown } from "lucide-react"
+import { useState, useRef } from 'react'
+import { X, ChevronDown, EyeOff } from "lucide-react"
 import { toast } from "sonner"
 import Link from 'next/link'
 
@@ -45,10 +45,17 @@ function formatDate(published?: string, collectedAt?: string): string {
     return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
+/** スワイプ判定: この距離(px)を超えて左に払うと「興味なし」 */
+const SWIPE_DISMISS_THRESHOLD = 90
+
 export function ArticleCard({ article, outsideBubble, onCategoryClick, variant = 'row' }: ArticleCardProps) {
     const [isVisible, setIsVisible] = useState(true)
     const [expanded, setExpanded] = useState(false)
     const [imageError, setImageError] = useState(false)
+    // 左スワイプで興味なし（モバイル）
+    const [dragX, setDragX] = useState(0)
+    const [dismissing, setDismissing] = useState(false)
+    const touchRef = useRef<{ x: number; y: number; dragging: boolean } | null>(null)
 
     const category = (article.category || '').split(',').map(c => c.trim()).filter(Boolean)[0]
     const relatedCount = article.related?.length || 0
@@ -60,13 +67,93 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
         await recordInteraction(article.id, type)
     }
 
-    const handleNotInterested = async (e: React.MouseEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
+    const dismiss = async () => {
         setIsVisible(false)
         toast.info("この記事を表示しないようにしました")
         await logInteraction('not_interested')
     }
+
+    const handleNotInterested = (e: React.MouseEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        dismiss()
+    }
+
+    // ---- 左スワイプで興味なし（モバイル） ----
+    const suppressClickRef = useRef(false)
+
+    const onTouchStart = (e: React.TouchEvent) => {
+        const t = e.touches[0]
+        touchRef.current = { x: t.clientX, y: t.clientY, dragging: false }
+    }
+
+    const onTouchMove = (e: React.TouchEvent) => {
+        const s = touchRef.current
+        if (!s) return
+        const t = e.touches[0]
+        const dx = t.clientX - s.x
+        const dy = t.clientY - s.y
+        if (!s.dragging) {
+            // 縦スクロールと判定したらジェスチャを放棄、横優位なら追従開始
+            if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx)) {
+                touchRef.current = null
+                return
+            }
+            if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                s.dragging = true
+            } else {
+                return
+            }
+        }
+        suppressClickRef.current = true
+        setDragX(Math.min(0, dx))  // 左方向のみ
+    }
+
+    const onTouchEnd = () => {
+        const s = touchRef.current
+        touchRef.current = null
+        if (!s?.dragging) return
+        if (dragX < -SWIPE_DISMISS_THRESHOLD) {
+            setDismissing(true)
+            setDragX(-500)
+            setTimeout(dismiss, 180)
+        } else {
+            setDragX(0)
+        }
+        setTimeout(() => { suppressClickRef.current = false }, 80)
+    }
+
+    /** スワイプ対応の外殻。背面に「興味なし」レイヤー、前面がスライドする */
+    const swipeShell = (children: React.ReactNode) => (
+        <div className="relative group overflow-hidden">
+            {dragX < 0 && (
+                <div className="absolute inset-0 bg-red-50 flex items-center justify-end gap-1.5 pr-5 text-red-600 text-[12px] font-medium" aria-hidden>
+                    <EyeOff className="w-4 h-4" />
+                    興味なし
+                </div>
+            )}
+            <div
+                className="relative bg-card"
+                style={{
+                    transform: `translateX(${dragX}px)`,
+                    transition: dragX === 0 || dismissing ? 'transform 0.18s ease, opacity 0.18s ease' : 'none',
+                    opacity: dismissing ? 0 : 1,
+                    touchAction: 'pan-y',
+                }}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+                onClickCapture={(e) => {
+                    if (suppressClickRef.current) {
+                        e.preventDefault()
+                        e.stopPropagation()
+                    }
+                }}
+            >
+                {children}
+            </div>
+        </div>
+    )
 
     if (!isVisible) return null
 
@@ -153,8 +240,8 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
 
     // ---- featured: セクション先頭の大型カード ----
     if (variant === 'featured') {
-        return (
-            <div className="relative group">
+        return swipeShell(
+            <>
                 {dismissButton}
                 <Link href={`/article/${article.id}`} onClick={() => logInteraction('view')} className="block">
                     {hasImage && (
@@ -180,13 +267,13 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
                     </div>
                 </Link>
                 {relatedList && <div className="px-3 pb-2">{relatedList}</div>}
-            </div>
+            </>
         )
     }
 
     // ---- row: 高密度リスト行 ----
-    return (
-        <div className="relative group">
+    return swipeShell(
+        <>
             {dismissButton}
             <Link
                 href={`/article/${article.id}`}
@@ -213,6 +300,6 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
                 )}
             </Link>
             {relatedList && <div className="px-3 pb-2 -mt-1">{relatedList}</div>}
-        </div>
+        </>
     )
 }

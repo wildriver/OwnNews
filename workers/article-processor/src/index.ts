@@ -32,6 +32,13 @@ interface CategorizationResult {
 /** パックに含める記事数（直近） */
 const PACK_SIZE = 800
 
+/** Secretsに入力されたURLの揺れ（スキーム欠落・前後空白・末尾スラッシュ）を吸収する */
+function normalizeSupabaseUrl(raw: string): string {
+    let u = (raw || '').trim().replace(/\/+$/, '')
+    if (u && !/^https?:\/\//i.test(u)) u = 'https://' + u
+    return u
+}
+
 // ============================================================
 // LLM分析（分類 + 栄養素スコア）
 // ============================================================
@@ -231,12 +238,13 @@ export default {
     async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
         console.log('Worker started processing...')
 
-        if (!env.SUPABASE_URL || !env.SUPABASE_KEY) {
+        const supabaseUrl = normalizeSupabaseUrl(env.SUPABASE_URL)
+        if (!supabaseUrl || !env.SUPABASE_KEY) {
             console.error('Missing Supabase credentials')
             return
         }
 
-        const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_KEY)
+        const supabase = createClient(supabaseUrl, (env.SUPABASE_KEY || '').trim())
 
         // 1. Fetch unprocessed articles (limit 50)
         const { data: articles, error } = await supabase
