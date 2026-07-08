@@ -1,19 +1,29 @@
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 import { AppSidebar } from '@/components/app-sidebar'
 import { MobileNav } from '@/components/mobile-nav'
 import { VersionBadge } from '@/components/version-badge'
+import { CloudSync } from '@/components/cloud-sync'
 
 export const runtime = 'edge'
 
-// ローカルファースト: レイアウトでの認証チェック・サーバ側統計取得はなし。
-// デスクトップ=サイドバー / モバイル=ボトムナビ。
-export default function MainLayout({
+// 複数人が使うサイト。Googleログインでユーザーを識別し、推薦データを
+// 運営Supabaseにユーザー単位で保存する（推薦計算は各端末で実行）。
+export default async function MainLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+        redirect('/login')
+    }
+
     return (
         <div className="flex h-screen overflow-hidden bg-background text-foreground">
-            <AppSidebar />
+            <CloudSync />
+            <AppSidebar userEmail={user.email ?? ''} />
             <main className="flex-1 overflow-y-auto w-full pb-16 md:pb-0">
                 {children}
             </main>

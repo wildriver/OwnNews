@@ -33,7 +33,9 @@ export function NewsGrid({ articles, outsideBubble, onCategoryClick, withFeature
     return (
         <div className="md:grid md:grid-cols-2 xl:grid-cols-3 md:gap-2 bg-card md:bg-transparent border border-border md:border-0 rounded-xl md:rounded-none overflow-hidden divide-y divide-border md:divide-y-0">
             {featured && (
-                <div className="md:col-span-2 xl:col-span-1 xl:row-span-2 md:bg-card md:border md:border-border md:rounded-lg md:overflow-hidden">
+                // key に featured.id を付けて、記事が差し替わったら確実に再マウントする
+                // （付けないとインスタンス再利用で内部状態が残り、空カード化する）
+                <div key={featured.id} className="md:col-span-2 xl:col-span-1 xl:row-span-2 md:bg-card md:border md:border-border md:rounded-lg md:overflow-hidden">
                     <ArticleCard
                         article={featured}
                         variant="featured"

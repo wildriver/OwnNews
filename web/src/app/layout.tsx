@@ -25,7 +25,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja">
+    // 描画前スクリプトが data-textsize を付与するためハイドレーション差分を許容
+    <html lang="ja" suppressHydrationWarning>
+      <head>
+        {/* 描画前に保存済みの表示サイズを適用してちらつきを防ぐ */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var s=localStorage.getItem('ownnews_textsize');if(s)document.documentElement.dataset.textsize=s;}catch(e){}`,
+          }}
+        />
+      </head>
       <body
         className={`${inter.variable} antialiased bg-background text-foreground`}
         style={{ fontFamily: `var(--font-inter), "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif` }}

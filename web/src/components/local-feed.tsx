@@ -1,15 +1,17 @@
 'use client'
 
-// ローカル推薦フィード
-// 記事パックをIndexedDBに同期し、関心ベクトルとの類似度計算・バブル分類・
-// グルーピング・スライダー応答・ジャンル除外をすべてブラウザ内で行う。
-// 嗜好データは端末内（+設定時は個人Supabase）にのみ保存される。
+// 推薦フィード
+// 関心ベクトルとの類似度計算・バブル分類・グルーピング・スライダー応答・
+// ジャンル除外を各ユーザーの端末で実行する（推薦計算はクライアント側）。
+// 推薦に使うデータ（ベクトル・強度・カテゴリON/OFF・操作履歴）は運営Supabaseに
+// ユーザー単位で保存し端末間同期。IndexedDBは高速表示用キャッシュ。
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { BubbleFeedLayout } from '@/components/bubble-feed-layout'
 import { LocalFilterSlider } from '@/components/local-filter-slider'
-import { CategoryFilterBar, loadExcluded } from '@/components/category-filter-bar'
+import { TextSizeControl } from '@/components/text-size-control'
+import { CategoryFilterBar, loadExcluded, saveExcluded } from '@/components/category-filter-bar'
 import { Button } from '@/components/ui/button'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { GroupedArticle, ONBOARDING_CATEGORIES } from '@/lib/types'
@@ -17,7 +19,7 @@ import { PackArticle } from '@/lib/client/types'
 import { loadArticles } from '@/lib/client/pack'
 import { rankFeed, filterArticles, seedVectorFromCategories } from '@/lib/client/engine'
 import { getKV, setKV, getAllInteractions } from '@/lib/client/store'
-import { syncWithPersonalDB, pushVectorToPersonalDB } from '@/lib/client/personal'
+import { pullUserData, pushVector, pushSettings } from '@/lib/client/sync'
 import { INTERACTION_EVENT } from '@/lib/client/interactions'
 
 function todayLabel(): string {
@@ -41,7 +43,7 @@ export function LocalFeed() {
     const [loading, setLoading] = useState(true)
     const [onboardingCats, setOnboardingCats] = useState<Set<string>>(new Set())
 
-    // ---- 初期化: パック同期 + ローカル状態読み込み + 個人DB同期 ----
+    // ---- 初期化: パック同期 + ローカルキャッシュ読み込み + 運営Supabase同期 ----
     useEffect(() => {
         let cancelled = false
         const init = async () => {
@@ -68,12 +70,27 @@ export function LocalFeed() {
             setDismissedIds(dismissed)
             setLoading(false)
 
-            // 個人DBと同期（別端末の学習結果があれば取り込み）
-            const remote = await syncWithPersonalDB()
-            if (!cancelled && remote?.vector) {
-                setVector(remote.vector)
-                const s = await getKV<number>('filter_strength')
-                if (s !== undefined) setStrength(s)
+            // 運営Supabaseと同期（ログイン時。別端末の学習・設定を取り込み、
+            // 未同期のローカル操作をpush）。サーバーが真実の источник。
+            const remote = await pullUserData()
+            if (!cancelled && remote) {
+                if (remote.vector) setVector(remote.vector)
+                if (typeof remote.filterStrength === 'number') setStrength(remote.filterStrength)
+                if (remote.excludedCategories) {
+                    const set = new Set(remote.excludedCategories)
+                    saveExcluded(set)          // CategoryFilterBar(localStorage読み込み)と整合
+                    setExcluded(set)
+                }
+                // リモートから取り込んだ操作履歴で既読/非表示を更新
+                const merged = await getAllInteractions()
+                const seen2 = new Set<string>()
+                const dismissed2 = new Set<string>()
+                for (const i of merged) {
+                    seen2.add(i.article_id)
+                    if (i.type === 'not_interested') dismissed2.add(i.article_id)
+                }
+                setSeenIds(seen2)
+                setDismissedIds(dismissed2)
             }
         }
         init()
@@ -95,12 +112,18 @@ export function LocalFeed() {
         return () => window.removeEventListener(INTERACTION_EVENT, handler)
     }, [])
 
-    // ---- スライダー: 完全ローカルで即時再計算 ----
+    // ---- スライダー: 端末側で即時再計算し、設定を運営Supabaseへ同期 ----
     const handleStrengthChange = useCallback((v: number) => {
         setStrength(v)
         setKV('filter_strength', v)
-        if (vector) pushVectorToPersonalDB(vector, v)
-    }, [vector])
+        pushSettings({ filterStrength: v })
+    }, [])
+
+    // ---- ジャンルON/OFF: 端末間同期のため運営Supabaseへも保存 ----
+    const handleExcludeChange = useCallback((next: Set<string>) => {
+        setExcluded(next)
+        pushSettings({ excludedCategories: Array.from(next) })
+    }, [])
 
     // ---- ジャンル除外をエンジンの候補集合に反映 ----
     const visibleArticles = useMemo(() => {
@@ -141,10 +164,11 @@ export function LocalFeed() {
     const completeOnboarding = async () => {
         const seed = seedVectorFromCategories(articles, Array.from(onboardingCats))
         if (seed) {
+            const now = new Date().toISOString()
             setVector(seed)
             await setKV('user_vector', seed)
-            await setKV('vector_updated_at', new Date().toISOString())
-            pushVectorToPersonalDB(seed, strength)
+            await setKV('vector_updated_at', now)
+            pushVector(seed, now)
         }
     }
 
@@ -161,16 +185,23 @@ export function LocalFeed() {
         <div>
             {/* コンパクトヘッダー */}
             <header className="mb-3 flex flex-col md:flex-row md:items-center justify-between gap-2">
-                <div className="flex items-baseline gap-2">
-                    <h1 className="text-lg font-bold tracking-tight">きょうのニュース</h1>
-                    <span className="text-[11px] text-muted-foreground tnum">{todayLabel()}</span>
+                <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-baseline gap-2">
+                        <h1 className="text-lg font-bold tracking-tight">きょうのニュース</h1>
+                        <span className="text-[11px] text-muted-foreground tnum">{todayLabel()}</span>
+                    </div>
+                    {/* モバイルではタイトル行の右に置く */}
+                    <TextSizeControl className="inline-flex md:hidden" />
                 </div>
-                {!isFilterMode && canRank && (
-                    <LocalFilterSlider value={strength} onChange={handleStrengthChange} />
-                )}
+                <div className="flex items-center gap-2">
+                    <TextSizeControl className="hidden md:inline-flex" />
+                    {!isFilterMode && canRank && (
+                        <LocalFilterSlider value={strength} onChange={handleStrengthChange} />
+                    )}
+                </div>
             </header>
 
-            {!selectedCategory && <CategoryFilterBar onExcludeChange={setExcluded} />}
+            {!selectedCategory && <CategoryFilterBar excluded={excluded} onExcludeChange={handleExcludeChange} />}
 
             {/* 記事パック未取得（初回・オフライン） */}
             {articles.length === 0 && (

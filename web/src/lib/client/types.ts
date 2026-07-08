@@ -38,17 +38,6 @@ export interface LocalInteraction {
     perspective_score?: number
     emotion_score?: number
     immediacy_score?: number
-    /** 個人Supabaseへ同期済みか */
+    /** 運営Supabaseへ同期済みか */
     synced?: boolean
-}
-
-export interface PersonalDBConfig {
-    url: string
-    key: string
-}
-
-export interface EngineState {
-    /** 関心ベクトル（1024次元、L2正規化済み） */
-    vector: number[] | null
-    updatedAt: string
 }

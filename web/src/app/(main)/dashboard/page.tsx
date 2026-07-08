@@ -21,6 +21,7 @@ import {
 } from '@/lib/client/health-local'
 import { getAllInteractions, getAllArticles } from '@/lib/client/store'
 import { LocalInteraction, PackArticle } from '@/lib/client/types'
+import { SYNCED_EVENT } from '@/lib/client/sync'
 import { Loader2 } from 'lucide-react'
 
 export default function DashboardPage() {
@@ -30,12 +31,15 @@ export default function DashboardPage() {
 
     useEffect(() => {
         let cancelled = false
-        Promise.all([getAllInteractions(), getAllArticles()]).then(([ints, arts]) => {
+        const load = () => Promise.all([getAllInteractions(), getAllArticles()]).then(([ints, arts]) => {
             if (cancelled) return
             setInteractions(ints)
             setArticles(arts)
         })
-        return () => { cancelled = true }
+        load()
+        // 運営Supabaseからの同期完了で最新化
+        window.addEventListener(SYNCED_EVENT, load)
+        return () => { cancelled = true; window.removeEventListener(SYNCED_EVENT, load) }
     }, [])
 
     const periodLabel = period === '7d' ? '過去1週間' : period === '30d' ? '過去1ヶ月' : '過去3ヶ月'
@@ -74,7 +78,7 @@ export default function DashboardPage() {
                 <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                     <div>
                         <h1 className="text-xl font-bold tracking-tight">情報的健康</h1>
-                        <p className="text-muted-foreground">あなたの情報摂取バランスと活動履歴（この端末内で計算）</p>
+                        <p className="text-muted-foreground">あなたの情報摂取バランスと活動履歴（アカウントに同期・集計は端末側）</p>
                     </div>
 
                     <div className="flex bg-card border border-border p-1 rounded-lg">
