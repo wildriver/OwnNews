@@ -78,7 +78,7 @@ export default function DashboardPage() {
                 <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                     <div>
                         <h1 className="text-xl font-bold tracking-tight">情報的健康</h1>
-                        <p className="text-muted-foreground">あなたの情報摂取バランスと活動履歴（この端末内で計算）</p>
+                        <p className="text-muted-foreground">あなたの情報摂取バランスと活動履歴（アカウントに同期・集計は端末側）</p>
                     </div>
 
                     <div className="flex bg-card border border-border p-1 rounded-lg">

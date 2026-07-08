@@ -38,6 +38,6 @@ export interface LocalInteraction {
     perspective_score?: number
     emotion_score?: number
     immediacy_score?: number
-    /** 個人Supabaseへ同期済みか */
+    /** 運営Supabaseへ同期済みか */
     synced?: boolean
 }

@@ -43,7 +43,7 @@ export function LocalFeed() {
     const [loading, setLoading] = useState(true)
     const [onboardingCats, setOnboardingCats] = useState<Set<string>>(new Set())
 
-    // ---- 初期化: パック同期 + ローカル状態読み込み + 個人DB同期 ----
+    // ---- 初期化: パック同期 + ローカルキャッシュ読み込み + 運営Supabase同期 ----
     useEffect(() => {
         let cancelled = false
         const init = async () => {

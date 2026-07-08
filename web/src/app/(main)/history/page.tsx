@@ -98,7 +98,7 @@ export default function HistoryPage() {
                 <header className="flex items-center gap-4">
                     <div>
                         <h1 className="text-xl font-bold tracking-tight">履歴</h1>
-                        <p className="text-muted-foreground">閲覧履歴と非表示設定の管理（この端末内のデータ）</p>
+                        <p className="text-muted-foreground">閲覧履歴と非表示設定の管理（アカウントに同期）</p>
                     </div>
                 </header>
 
