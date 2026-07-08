@@ -35,37 +35,6 @@ async function getPackBucket(): Promise<R2BucketLike | null> {
     }
 }
 
-function parseVector(v: unknown): number[] | null {
-    if (!v) return null
-    if (typeof v === 'string') {
-        try { return JSON.parse(v) } catch { return null }
-    }
-    if (Array.isArray(v)) return v as number[]
-    return null
-}
-
-// L2正規化してint8量子化 → base64（フォールバック生成用。Worker側と同一ロジック）
-function quantizeToBase64(vec: number[]): string | null {
-    const n = vec.length
-    if (n === 0) return null
-    let norm = 0
-    for (let i = 0; i < n; i++) norm += vec[i] * vec[i]
-    norm = Math.sqrt(norm)
-    if (norm === 0) return null
-
-    const bytes = new Uint8Array(n)
-    for (let i = 0; i < n; i++) {
-        const q = Math.max(-127, Math.min(127, Math.round((vec[i] / norm) * 127)))
-        bytes[i] = q & 0xff
-    }
-    let binary = ''
-    const CHUNK = 8192
-    for (let i = 0; i < n; i += CHUNK) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
-    }
-    return btoa(binary)
-}
-
 const CACHE_HEADERS = {
     // CDNで10分キャッシュ。収集は1日5回なので十分な鮮度
     'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600',
@@ -101,9 +70,12 @@ export async function GET(request: NextRequest) {
     }
 
     // ---- フォールバック: Supabaseから直接生成 ----
-    // 注意: Supabaseの匿名ロールにはstatement timeout（約3秒）があり、
-    // 埋め込み込みで数百件を1クエリで引くとタイムアウトする。
-    // 100件ずつのページ取得に分割し、各クエリを制限時間内に収める。
+    // 注意: Supabaseの匿名ロールにはstatement timeout（約3秒）がある。
+    // ここでは embedding_m3 IS NOT NULL で絞り込まない:
+    //   - 絞り込むと、埋め込み未生成の記事が多い間は全件スキャンになりタイムアウトする
+    //   - 埋め込みが無くてもニュース自体は表示したい（バブル分類は後から効く）
+    // collected_at のインデックスに沿って最新から取得するので高速。
+    // embedding_m3 は重いので取得列から外し、埋め込みはR2パック経由でのみ配る。
     const supabase = await createClient()
 
     const PAGE = 100
@@ -115,8 +87,7 @@ export async function GET(request: NextRequest) {
     for (let i = 0; i < MAX_PAGES; i++) {
         let query = supabase
             .from('articles')
-            .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at, embedding_m3')
-            .not('embedding_m3', 'is', null)
+            .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at')
             .order('collected_at', { ascending: false })
             .range(i * PAGE, i * PAGE + PAGE - 1)
 
@@ -139,7 +110,6 @@ export async function GET(request: NextRequest) {
 
     let latestCollectedAt = since || ''
     const articles = (data || []).map((a) => {
-        const vec = parseVector(a.embedding_m3)
         if (a.collected_at > latestCollectedAt) latestCollectedAt = a.collected_at
         return {
             id: a.id,
@@ -158,7 +128,9 @@ export async function GET(request: NextRequest) {
             emotion_score: a.emotion_score,
             immediacy_score: a.immediacy_score,
             collected_at: a.collected_at,
-            emb: vec ? quantizeToBase64(vec) : null,
+            // フォールバック経路では埋め込みを返さない（重い & タイムアウト回避）。
+            // 埋め込み付きの本来のパックはWorkerがR2に生成する。
+            emb: null,
         }
     })
 

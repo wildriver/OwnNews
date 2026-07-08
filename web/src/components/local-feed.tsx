@@ -115,22 +115,27 @@ export function LocalFeed() {
     // ---- フィード計算（1000件×1024次元でも数十ms） ----
     const isFilterMode = !!(selectedCategory || dateFrom || dateTo)
 
+    // 埋め込みがまだ1件も無い（Worker未処理）場合はベクトル分類ができないため、
+    // 最新ニュースのリスト表示にフォールバックする（バブル分類は埋め込み生成後に有効化）。
+    const hasEmbeddings = useMemo(() => articles.some(a => a.emb), [articles])
+    const canRank = hasEmbeddings && !!vector
+
     const feed = useMemo(() => {
-        if (loading || isFilterMode) return { inBubble: [], outBubble: [] }
+        if (loading || isFilterMode || !canRank) return { inBubble: [], outBubble: [] }
         return rankFeed(visibleArticles, vector, strength, seenIds, dismissedIds)
-    }, [loading, isFilterMode, visibleArticles, vector, strength, seenIds, dismissedIds])
+    }, [loading, isFilterMode, canRank, visibleArticles, vector, strength, seenIds, dismissedIds])
 
     const fallbackArticles = useMemo<GroupedArticle[]>(() => {
         if (loading) return []
         if (isFilterMode) {
             return filterArticles(visibleArticles, { category: selectedCategory, dateFrom, dateTo }, dismissedIds)
         }
-        if (!vector) {
-            // 冷スタート: オンボーディング前は最新記事のリスト表示
+        if (!canRank) {
+            // 冷スタート or 埋め込み未生成: 最新記事のリスト表示
             return filterArticles(visibleArticles, {}, dismissedIds)
         }
         return []
-    }, [loading, isFilterMode, visibleArticles, selectedCategory, dateFrom, dateTo, dismissedIds, vector])
+    }, [loading, isFilterMode, canRank, visibleArticles, selectedCategory, dateFrom, dateTo, dismissedIds])
 
     // ---- オンボーディング: 関心カテゴリ選択から初期ベクトル生成 ----
     const completeOnboarding = async () => {
@@ -160,7 +165,7 @@ export function LocalFeed() {
                     <h1 className="text-lg font-bold tracking-tight">きょうのニュース</h1>
                     <span className="text-[11px] text-muted-foreground tnum">{todayLabel()}</span>
                 </div>
-                {!isFilterMode && (
+                {!isFilterMode && canRank && (
                     <LocalFilterSlider value={strength} onChange={handleStrengthChange} />
                 )}
             </header>
@@ -181,8 +186,15 @@ export function LocalFeed() {
                 </div>
             )}
 
-            {/* オンボーディング: 関心ベクトル未生成時 */}
-            {!vector && articles.length > 0 && !isFilterMode && (
+            {/* 埋め込み未生成のお知らせ（ニュースは最新順で表示中） */}
+            {articles.length > 0 && !hasEmbeddings && !isFilterMode && (
+                <div className="mb-3 px-3 py-2 rounded-lg bg-accent/60 border border-primary/15 text-[11px] text-accent-foreground">
+                    最新のニュースを表示しています。記事のAI分析（バブル分類・栄養素）は順次反映されます。
+                </div>
+            )}
+
+            {/* オンボーディング: 埋め込みがあり、かつ関心ベクトル未生成のとき */}
+            {!vector && hasEmbeddings && articles.length > 0 && !isFilterMode && (
                 <div className="mb-4 p-4 rounded-xl bg-card border border-border">
                     <h2 className="text-[13px] font-bold mb-1">興味のあるジャンルを選んでください</h2>
                     <p className="text-[11px] text-muted-foreground mb-3">
@@ -221,7 +233,7 @@ export function LocalFeed() {
                     inBubbleArticles={feed.inBubble}
                     outBubbleArticles={feed.outBubble}
                     fallbackArticles={fallbackArticles}
-                    bubbleMode={isFilterMode || !vector ? 'none' : 'vector'}
+                    bubbleMode={isFilterMode || !canRank ? 'none' : 'vector'}
                     filterStrength={strength}
                     selectedCategory={selectedCategory}
                 />
