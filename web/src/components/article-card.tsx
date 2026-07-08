@@ -49,7 +49,6 @@ function formatDate(published?: string, collectedAt?: string): string {
 const SWIPE_DISMISS_THRESHOLD = 90
 
 export function ArticleCard({ article, outsideBubble, onCategoryClick, variant = 'row' }: ArticleCardProps) {
-    const [isVisible, setIsVisible] = useState(true)
     const [expanded, setExpanded] = useState(false)
     const [imageError, setImageError] = useState(false)
     // 左スワイプで興味なし（モバイル）
@@ -67,8 +66,10 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
         await recordInteraction(article.id, type)
     }
 
+    // 非表示は親（feed）が dismissedIds で再描画して行う。ここでローカルに
+    // isVisible=false で null を返すと、フィーチャード枠のように記事が差し替わる
+    // 位置でインスタンスが再利用され「非表示状態が残る」（空の白ボックス）ため。
     const dismiss = async () => {
-        setIsVisible(false)
         toast.info("この記事を表示しないようにしました")
         await logInteraction('not_interested')
     }
@@ -154,8 +155,6 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
             </div>
         </div>
     )
-
-    if (!isVisible) return null
 
     // ---- 共通パーツ ----
     const metaChips = (
