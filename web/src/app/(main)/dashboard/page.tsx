@@ -21,6 +21,7 @@ import {
 } from '@/lib/client/health-local'
 import { getAllInteractions, getAllArticles } from '@/lib/client/store'
 import { LocalInteraction, PackArticle } from '@/lib/client/types'
+import { SYNCED_EVENT } from '@/lib/client/sync'
 import { Loader2 } from 'lucide-react'
 
 export default function DashboardPage() {
@@ -30,12 +31,15 @@ export default function DashboardPage() {
 
     useEffect(() => {
         let cancelled = false
-        Promise.all([getAllInteractions(), getAllArticles()]).then(([ints, arts]) => {
+        const load = () => Promise.all([getAllInteractions(), getAllArticles()]).then(([ints, arts]) => {
             if (cancelled) return
             setInteractions(ints)
             setArticles(arts)
         })
-        return () => { cancelled = true }
+        load()
+        // 運営Supabaseからの同期完了で最新化
+        window.addEventListener(SYNCED_EVENT, load)
+        return () => { cancelled = true; window.removeEventListener(SYNCED_EVENT, load) }
     }, [])
 
     const periodLabel = period === '7d' ? '過去1週間' : period === '30d' ? '過去1ヶ月' : '過去3ヶ月'

@@ -39,42 +39,40 @@ export function saveExcluded(excluded: Set<string>) {
 }
 
 interface CategoryFilterBarProps {
+  /** 親が保持する除外状態（制御コンポーネント）。省略時は自身のlocalStorageを使用 */
+  excluded?: Set<string>
   onExcludeChange: (excluded: Set<string>) => void
 }
 
 // ジャンルON/OFFチップ列。1行の横スクロールで密度を保つ。
-// 除外状態は localStorage に永続化され、フィード生成（rankFeed）にも反映される。
-export function CategoryFilterBar({ onExcludeChange }: CategoryFilterBarProps) {
-  const [excluded, setExcluded] = useState<Set<string>>(new Set())
+// 除外状態は localStorage + 運営Supabase に保存され、端末間で同期される。
+export function CategoryFilterBar({ excluded: controlledExcluded, onExcludeChange }: CategoryFilterBarProps) {
+  const [internalExcluded, setInternalExcluded] = useState<Set<string>>(new Set())
+  const excluded = controlledExcluded ?? internalExcluded
 
-  // localStorage から初期値を復元
+  // 制御されていない場合のみ localStorage から初期値を復元
   useEffect(() => {
+    if (controlledExcluded !== undefined) return
     const saved = loadExcluded()
     if (saved.size > 0) {
-      setExcluded(saved)
-      // 親のsetStateはレンダー外（マクロタスク）で呼ぶ
+      setInternalExcluded(saved)
       setTimeout(() => onExcludeChange(saved), 0)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 注意: onExcludeChange（親のsetState）をsetExcludedのupdater内で呼ぶと
-  // "Cannot update while rendering" エラーになるため、必ずupdaterの外で呼ぶ
   const toggle = (cat: string) => {
     const next = new Set(excluded)
-    if (next.has(cat)) {
-      next.delete(cat)
-    } else {
-      next.add(cat)
-    }
-    setExcluded(next)
+    if (next.has(cat)) next.delete(cat)
+    else next.add(cat)
+    setInternalExcluded(next)
     saveExcluded(next)
     onExcludeChange(next)
   }
 
   const resetAll = () => {
     const empty = new Set<string>()
-    setExcluded(empty)
+    setInternalExcluded(empty)
     saveExcluded(empty)
     onExcludeChange(empty)
   }

@@ -1,20 +1,21 @@
 'use client'
 
 // 操作記録の一元入口。
-// ArticleCard等のUIから呼ばれ、(1)IndexedDBに履歴保存 (2)関心ベクトル更新
-// (3)個人Supabaseへバックグラウンド同期 (4)フィード再計算イベント発火 を行う。
-// 共有Supabaseには何も送信しない。
+// (1) IndexedDBに履歴保存（高速・オフライン用キャッシュ）
+// (2) 関心ベクトルをクリック履歴から更新（推薦エンジンの学習）
+// (3) 運営Supabaseへバックグラウンド同期（ログイン時。端末間で共有）
+// (4) フィード再計算イベント発火
 
 import { putInteraction, getKV, setKV, getAllArticles } from './store'
 import { updateVector } from './engine'
-import { pushInteractionToPersonalDB, pushVectorToPersonalDB } from './personal'
+import { pushInteraction, pushVector } from './sync'
 import { InteractionType, LocalInteraction } from './types'
 
 export const INTERACTION_EVENT = 'ownnews:interaction'
 
 export async function recordInteraction(articleId: string, type: InteractionType): Promise<void> {
     try {
-        // 記事メタデータのスナップショットを添付（ダッシュボード集計用）
+        // 記事メタデータのスナップショットを添付（履歴・ダッシュボード集計用）
         const articles = await getAllArticles()
         const article = articles.find(a => a.id === articleId)
 
@@ -37,6 +38,7 @@ export async function recordInteraction(articleId: string, type: InteractionType
         await putInteraction(interaction)
 
         // 関心ベクトルをクリック履歴から更新（エンジンの学習）
+        // 埋め込みがある記事のみ（未生成の間はスキップ、履歴自体は残る）
         if (article?.emb) {
             const current = (await getKV<number[]>('user_vector')) || null
             const next = updateVector(current, article.emb, type)
@@ -44,12 +46,12 @@ export async function recordInteraction(articleId: string, type: InteractionType
                 const now = new Date().toISOString()
                 await setKV('user_vector', next)
                 await setKV('vector_updated_at', now)
-                const strength = (await getKV<number>('filter_strength')) ?? 0.5
-                pushVectorToPersonalDB(next, strength)
+                pushVector(next, now)
             }
         }
 
-        pushInteractionToPersonalDB(interaction)
+        // 運営Supabaseへ操作を同期（ログイン時のみ実行される）
+        pushInteraction(interaction)
 
         // フィードコンポーネントに通知（既読反映など）
         window.dispatchEvent(new CustomEvent(INTERACTION_EVENT, {

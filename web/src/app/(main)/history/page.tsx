@@ -1,6 +1,6 @@
 'use client'
 
-// 閲覧履歴（ローカル版）— IndexedDB内の履歴を表示する。サーバ問い合わせなし。
+// 閲覧履歴 — IndexedDBキャッシュを表示。運営Supabaseからの同期完了で最新化。
 
 import { useState, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -11,14 +11,18 @@ import { Clock, XCircle, ExternalLink, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { getAllInteractions } from '@/lib/client/store'
 import { LocalInteraction } from '@/lib/client/types'
+import { SYNCED_EVENT } from '@/lib/client/sync'
 
 export default function HistoryPage() {
     const [interactions, setInteractions] = useState<LocalInteraction[] | null>(null)
 
     useEffect(() => {
-        getAllInteractions().then(ints =>
+        const load = () => getAllInteractions().then(ints =>
             setInteractions(ints.sort((a, b) => b.created_at.localeCompare(a.created_at)))
         )
+        load()
+        window.addEventListener(SYNCED_EVENT, load)
+        return () => window.removeEventListener(SYNCED_EVENT, load)
     }, [])
 
     if (!interactions) {

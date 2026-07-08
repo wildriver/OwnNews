@@ -25,7 +25,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja">
+    // 描画前スクリプトが data-textsize を付与するためハイドレーション差分を許容
+    <html lang="ja" suppressHydrationWarning>
       <head>
         {/* 描画前に保存済みの表示サイズを適用してちらつきを防ぐ */}
         <script

@@ -24,21 +24,19 @@ export default function LoginPage() {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-background p-4">
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/20 via-background to-background pointer-events-none" />
-
-            <Card className="w-full max-w-md border-border bg-card relative z-10 shadow-2xl">
+            <Card className="w-full max-w-md border-border bg-card relative z-10 shadow-sm">
                 <CardHeader className="text-center">
-                    <CardTitle className="text-3xl font-bold text-primary">
+                    <CardTitle className="text-2xl font-bold text-primary">
                         OwnNews
                     </CardTitle>
                     <CardDescription className="text-muted-foreground">
-                        パーソナライズされたニュースキュレーター
+                        情報的健康を保つニュースリーダー
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <p className="text-sm text-center text-zinc-700">
-                        あなた専用のニュースフィードを作成するために、<br />
-                        Googleアカウントでログインしてください。
+                    <p className="text-[13px] text-center text-zinc-700 leading-relaxed">
+                        Googleアカウントでログインすると、あなたの関心に合わせた
+                        ニュースがパソコン・スマホで同期されます。
                     </p>
 
                     <Button

@@ -5,13 +5,12 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { LayoutDashboard, Newspaper, Settings, Activity, History, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Newspaper, Settings, Activity, History, LogOut } from 'lucide-react'
 import { HealthStats } from '@/lib/types'
 import { DateFilterClient } from '@/components/date-filter-client'
 import { getAllInteractions } from '@/lib/client/store'
 import { computeHealthStats } from '@/lib/client/health-local'
 import { INTERACTION_EVENT } from '@/lib/client/interactions'
-import { getPersonalConfig } from '@/lib/client/personal'
 
 const NAV_ITEMS = [
     { href: '/', label: 'ニュース', icon: Newspaper },
@@ -20,10 +19,9 @@ const NAV_ITEMS = [
     { href: '/settings', label: '設定', icon: Settings },
 ]
 
-export function AppSidebar() {
+export function AppSidebar({ userEmail }: { userEmail: string }) {
     const pathname = usePathname()
     const [healthStats, setHealthStats] = useState<HealthStats | null>(null)
-    const [hasPersonalDB, setHasPersonalDB] = useState(false)
 
     useEffect(() => {
         let cancelled = false
@@ -34,7 +32,6 @@ export function AppSidebar() {
             } catch { /* IndexedDB未対応環境では統計非表示 */ }
         }
         load()
-        setHasPersonalDB(!!getPersonalConfig())
         window.addEventListener(INTERACTION_EVENT, load)
         return () => {
             cancelled = true
@@ -126,15 +123,27 @@ export function AppSidebar() {
                 </div>
             </ScrollArea>
 
-            <div className="p-4 border-t border-border mt-auto">
-                <div className="flex items-start gap-2 text-[10px] leading-relaxed text-muted-foreground">
-                    <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-primary/70 mt-0.5" />
-                    <span>
-                        嗜好データはこの端末内
-                        {hasPersonalDB && 'とあなたの個人DB'}
-                        にのみ保存されています
-                    </span>
+            <div className="p-3 border-t border-border mt-auto">
+                <div className="flex items-center gap-2.5 px-1 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+                        {(userEmail || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="text-[12px] font-medium text-foreground truncate">
+                            {userEmail ? userEmail.split('@')[0] : 'ゲスト'}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground truncate">{userEmail}</div>
+                    </div>
                 </div>
+                <form action="/auth/signout" method="post">
+                    <button
+                        type="submit"
+                        className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                    >
+                        <LogOut className="h-3.5 w-3.5" />
+                        ログアウト
+                    </button>
+                </form>
             </div>
         </aside>
     )

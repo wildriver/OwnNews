@@ -41,14 +41,3 @@ export interface LocalInteraction {
     /** 個人Supabaseへ同期済みか */
     synced?: boolean
 }
-
-export interface PersonalDBConfig {
-    url: string
-    key: string
-}
-
-export interface EngineState {
-    /** 関心ベクトル（1024次元、L2正規化済み） */
-    vector: number[] | null
-    updatedAt: string
-}
