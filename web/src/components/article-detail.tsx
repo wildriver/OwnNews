@@ -16,6 +16,7 @@ import { DeepDiveDialog } from '@/components/deep-dive-dialog'
 import { getAllArticles } from '@/lib/client/store'
 import { PackArticle } from '@/lib/client/types'
 import { decodeEmb, cosine, GROUPING_THRESHOLD } from '@/lib/client/engine'
+import { recordInteraction } from '@/lib/client/interactions'
 import { extractSourceName } from '@/lib/news'
 
 interface RelatedItem {
@@ -34,6 +35,12 @@ export function ArticleDetail({ id }: { id: string }) {
     const [article, setArticle] = useState<PackArticle | null>(null)
     const [pack, setPack] = useState<PackArticle[]>([])
     const [status, setStatus] = useState<'loading' | 'ready' | 'notfound'>('loading')
+
+    // 記事を開いた時点で「閲覧」を記録する。これによりフィードから既読が消え、
+    // 関心ベクトルも学習される（フィードからの遷移・直リンクの両方をカバー）。
+    useEffect(() => {
+        recordInteraction(id, 'view')
+    }, [id])
 
     useEffect(() => {
         let cancelled = false
