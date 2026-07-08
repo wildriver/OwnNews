@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { BubbleFeedLayout } from '@/components/bubble-feed-layout'
 import { LocalFilterSlider } from '@/components/local-filter-slider'
+import { TextSizeControl } from '@/components/text-size-control'
 import { CategoryFilterBar, loadExcluded } from '@/components/category-filter-bar'
 import { Button } from '@/components/ui/button'
 import { Loader2, RefreshCw } from 'lucide-react'
@@ -161,13 +162,20 @@ export function LocalFeed() {
         <div>
             {/* コンパクトヘッダー */}
             <header className="mb-3 flex flex-col md:flex-row md:items-center justify-between gap-2">
-                <div className="flex items-baseline gap-2">
-                    <h1 className="text-lg font-bold tracking-tight">きょうのニュース</h1>
-                    <span className="text-[11px] text-muted-foreground tnum">{todayLabel()}</span>
+                <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-baseline gap-2">
+                        <h1 className="text-lg font-bold tracking-tight">きょうのニュース</h1>
+                        <span className="text-[11px] text-muted-foreground tnum">{todayLabel()}</span>
+                    </div>
+                    {/* モバイルではタイトル行の右に置く */}
+                    <TextSizeControl className="inline-flex md:hidden" />
                 </div>
-                {!isFilterMode && canRank && (
-                    <LocalFilterSlider value={strength} onChange={handleStrengthChange} />
-                )}
+                <div className="flex items-center gap-2">
+                    <TextSizeControl className="hidden md:inline-flex" />
+                    {!isFilterMode && canRank && (
+                        <LocalFilterSlider value={strength} onChange={handleStrengthChange} />
+                    )}
+                </div>
             </header>
 
             {!selectedCategory && <CategoryFilterBar onExcludeChange={setExcluded} />}

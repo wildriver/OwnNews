@@ -185,7 +185,7 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
     )
 
     const metaBottom = (
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground min-w-0">
+        <div className="flex items-center gap-2 text-muted-foreground min-w-0" style={{ fontSize: 'var(--fs-meta)' }}>
             <span className="truncate font-medium">{source}</span>
             <span className="shrink-0 tnum">{formatDate(article.published, (article as unknown as { collected_at?: string }).collected_at)}</span>
             {nutrients.map(n => (
@@ -257,10 +257,10 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
                     )}
                     <div className="px-3 py-2.5 space-y-1">
                         {metaChips}
-                        <h3 className="text-[15px] font-bold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                        <h3 className="font-bold leading-snug line-clamp-2 group-hover:text-primary transition-colors" style={{ fontSize: 'var(--fs-title-lg)' }}>
                             {article.title}
                         </h3>
-                        <p className="text-[12px] text-muted-foreground leading-relaxed line-clamp-2">
+                        <p className="text-muted-foreground leading-relaxed line-clamp-2" style={{ fontSize: 'var(--fs-body)' }}>
                             {article.summary}
                         </p>
                         {metaBottom}
@@ -282,7 +282,7 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
             >
                 <div className="flex-1 min-w-0 flex flex-col gap-1">
                     {metaChips}
-                    <h3 className="text-[13px] font-bold leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                    <h3 className="font-bold leading-snug line-clamp-2 group-hover:text-primary transition-colors" style={{ fontSize: 'var(--fs-title)' }}>
                         {article.title}
                     </h3>
                     <div className="mt-auto">{metaBottom}</div>

@@ -26,6 +26,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
+      <head>
+        {/* 描画前に保存済みの表示サイズを適用してちらつきを防ぐ */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var s=localStorage.getItem('ownnews_textsize');if(s)document.documentElement.dataset.textsize=s;}catch(e){}`,
+          }}
+        />
+      </head>
       <body
         className={`${inter.variable} antialiased bg-background text-foreground`}
         style={{ fontFamily: `var(--font-inter), "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif` }}
