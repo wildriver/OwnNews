@@ -149,8 +149,10 @@ export default function HistoryPage() {
         )
     }
 
-    const viewed = interactions.filter(i => i.type === 'view' || i.type === 'deep_dive')
-    const excluded = interactions.filter(i => i.type === 'not_interested')
+    // タイトル未取得（Phase1以前の古い履歴）は表示しない。実データはSQL整理＋同期で削除される。
+    const withTitle = interactions.filter(i => (i.title || '').trim() !== '')
+    const viewed = withTitle.filter(i => i.type === 'view' || i.type === 'deep_dive')
+    const excluded = withTitle.filter(i => i.type === 'not_interested')
 
     return (
         <div className="min-h-screen bg-background text-foreground p-4 md:p-8">

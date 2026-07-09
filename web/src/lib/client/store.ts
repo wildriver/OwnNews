@@ -86,6 +86,19 @@ export async function getAllInteractions(): Promise<LocalInteraction[]> {
     return tx('interactions', 'readonly', s => s.getAll() as IDBRequest<LocalInteraction[]>)
 }
 
+/** 指定した (article_id, type) の操作をローカルキャッシュから削除する */
+export async function deleteInteractions(keys: [string, string][]): Promise<void> {
+    if (keys.length === 0) return
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+        const t = db.transaction('interactions', 'readwrite')
+        const store = t.objectStore('interactions')
+        for (const key of keys) store.delete(key)
+        t.oncomplete = () => resolve()
+        t.onerror = () => reject(t.error)
+    })
+}
+
 export async function markInteractionsSynced(keys: [string, string][]): Promise<void> {
     const db = await openDB()
     return new Promise((resolve, reject) => {
