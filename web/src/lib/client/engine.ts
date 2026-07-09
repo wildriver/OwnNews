@@ -9,8 +9,12 @@ import { Article, GroupedArticle } from '@/lib/types'
 export const BUBBLE_THRESHOLD = 0.65
 /** 1ゾーンの最大記事数 */
 export const ZONE_SIZE = 15
-/** 同一トピックとみなすグルーピングしきい値 */
-export const GROUPING_THRESHOLD = 0.92
+/** 同一トピックとみなすグルーピングしきい値。
+ *  同じ出来事を複数メディアが報じたもの（BGE-M3で概ね0.88以上）を1枚に集約する。
+ *  0.92だとほぼ重複記事しかまとまらず、0.85未満だと別の話題まで融合しやすい。 */
+export const GROUPING_THRESHOLD = 0.88
+/** クラスタリング対象の上限（性能のため候補を絞る） */
+const CLUSTER_WINDOW = 60
 
 // ---- 埋め込みデコード ----
 
@@ -151,35 +155,48 @@ export function rankFeed(
         sim: cosine(userVector, decodeEmb(a.emb!)),
     }))
 
-    const inCandidates = scored
+    const outCount = Math.round(ZONE_SIZE * filterStrength)
+
+    // --- バブル内: 類似度上位をクラスタリングしてから上位ZONE_SIZE「クラスタ」を採用 ---
+    // 先に類似度降順で束ねるので、各クラスタの代表(lead)は最も関心に近い記事になる。
+    // 同じ話題を複数メディアが報じたものは1枚のカードに集約される。
+    const inWindow = scored
         .filter(s => s.sim >= BUBBLE_THRESHOLD)
         .sort((x, y) => y.sim - x.sim)
-        .slice(0, ZONE_SIZE)
+        .slice(0, CLUSTER_WINDOW)
+    const inGrouped = groupArticles(inWindow.map(s => toArticle(s.a, s.sim, true)))
+    const inBubble = inGrouped.slice(0, ZONE_SIZE)
 
-    const outCount = Math.round(ZONE_SIZE * filterStrength)
-    const inIds = new Set(inCandidates.map(s => s.a.id))
-    const outCandidates = scored
-        .filter(s => s.sim < BUBBLE_THRESHOLD && !inIds.has(s.a.id))
-        // 新しさ優先、同日なら低類似度（より「外側」）優先
+    // バブル内に採用済みの記事（代表＋関連）は除外
+    const usedIds = new Set<string>()
+    for (const g of inBubble) {
+        usedIds.add(g.id)
+        for (const r of g.related) usedIds.add(r.id)
+    }
+
+    // --- バブル外: 低類似度を新しさ優先でクラスタリング ---
+    const outWindow = scored
+        .filter(s => s.sim < BUBBLE_THRESHOLD && !usedIds.has(s.a.id))
         .sort((x, y) => {
             const d = (y.a.collected_at || '').localeCompare(x.a.collected_at || '')
             return d !== 0 ? d : x.sim - y.sim
         })
-        .slice(0, outCount)
+        .slice(0, CLUSTER_WINDOW)
+    const outGrouped = groupArticles(outWindow.map(s => toArticle(s.a, s.sim, false)))
+    const outBubble = outGrouped.slice(0, outCount)
 
-    return {
-        inBubble: groupArticles(inCandidates.map(s => toArticle(s.a, s.sim, true))),
-        outBubble: groupArticles(outCandidates.map(s => toArticle(s.a, s.sim, false))),
-    }
+    return { inBubble, outBubble }
 }
 
-/** カテゴリ・日付フィルタモード（バブル分類なしの単純リスト） */
+/** カテゴリ・日付フィルタモード / 冷スタートの単純リスト。
+ *  閲覧済み(seenIds)・興味なし(dismissedIds)は除外する（見た記事はフィードから消える）。 */
 export function filterArticles(
     articles: PackArticle[],
     opts: { category?: string | null; dateFrom?: string | null; dateTo?: string | null },
+    seenIds: Set<string>,
     dismissedIds: Set<string>
 ): GroupedArticle[] {
-    let list = articles.filter(a => !dismissedIds.has(a.id))
+    let list = articles.filter(a => !seenIds.has(a.id) && !dismissedIds.has(a.id))
     if (opts.category) {
         list = list.filter(a => (a.category || '').includes(opts.category!))
     }

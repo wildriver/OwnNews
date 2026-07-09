@@ -151,14 +151,14 @@ export function LocalFeed() {
     const fallbackArticles = useMemo<GroupedArticle[]>(() => {
         if (loading) return []
         if (isFilterMode) {
-            return filterArticles(visibleArticles, { category: selectedCategory, dateFrom, dateTo }, dismissedIds)
+            return filterArticles(visibleArticles, { category: selectedCategory, dateFrom, dateTo }, seenIds, dismissedIds)
         }
         if (!canRank) {
-            // 冷スタート or 埋め込み未生成: 最新記事のリスト表示
-            return filterArticles(visibleArticles, {}, dismissedIds)
+            // 冷スタート or 埋め込み未生成: 最新記事のリスト表示（閲覧済みは除外）
+            return filterArticles(visibleArticles, {}, seenIds, dismissedIds)
         }
         return []
-    }, [loading, isFilterMode, canRank, visibleArticles, selectedCategory, dateFrom, dateTo, dismissedIds])
+    }, [loading, isFilterMode, canRank, visibleArticles, selectedCategory, dateFrom, dateTo, seenIds, dismissedIds])
 
     // ---- オンボーディング: 関心カテゴリ選択から初期ベクトル生成 ----
     const completeOnboarding = async () => {
