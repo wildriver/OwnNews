@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { sendPush, VapidConfig } from './webpush'
 
 export interface Env {
     SUPABASE_URL: string
@@ -8,6 +9,51 @@ export interface Env {
     PACK_BUCKET?: R2Bucket
     /** Workers AI が失敗/枯渇した際のスコアリング用フォールバック（任意） */
     GROQ_API_KEY?: string
+    /** Web Push (VAPID)。設定時のみ日次プッシュを送る */
+    VAPID_PUBLIC_KEY?: string
+    VAPID_PRIVATE_KEY?: string
+    VAPID_SUBJECT?: string   // 例: mailto:you@example.com
+}
+
+/** 1日1回だけ、購読者全員に「新着ニュース」プッシュを送る。
+ *  R2に日付マーカーを置き、その日すでに送っていれば何もしない。 */
+async function sendDailyPushOnce(env: Env, supabase: SupabaseClient): Promise<void> {
+    if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.PACK_BUCKET) return
+
+    const today = new Date().toISOString().split('T')[0]
+    const marker = await env.PACK_BUCKET.get('push/last-sent.txt')
+    if (marker && (await marker.text()).trim() === today) return  // 本日送信済み
+
+    // 先にマーカーを置く（多重送信の窓を最小化）
+    await env.PACK_BUCKET.put('push/last-sent.txt', today)
+
+    const { data: subs, error } = await supabase
+        .from('push_subscriptions')
+        .select('endpoint, p256dh, auth')
+    if (error || !subs || subs.length === 0) {
+        console.log('No push subscriptions.')
+        return
+    }
+
+    const vapid: VapidConfig = {
+        publicKey: env.VAPID_PUBLIC_KEY,
+        privateKey: env.VAPID_PRIVATE_KEY,
+        subject: env.VAPID_SUBJECT || 'mailto:admin@ownnews.example',
+    }
+    const nowSec = Math.floor(Date.now() / 1000)
+
+    let ok = 0
+    const expired: string[] = []
+    for (const s of subs) {
+        const r = await sendPush(s, vapid, nowSec)
+        if (r === 'ok') ok++
+        else if (r === 'gone') expired.push(s.endpoint)
+    }
+    // 失効した購読を掃除
+    if (expired.length > 0) {
+        await supabase.from('push_subscriptions').delete().in('endpoint', expired)
+    }
+    console.log(`Daily push: sent=${ok}, expired=${expired.length}, total=${subs.length}`)
 }
 
 interface Article {
@@ -426,6 +472,12 @@ export default {
             }
         } else {
             console.warn('PACK_BUCKET binding not configured — pack generation skipped.')
+        }
+
+        // 6. 日次プッシュ通知（JST朝の窓 = UTC21-23時台のcronでのみ、1日1回）
+        //    event.cron が朝枠のときだけ実行。R2の日付マーカーで多重送信を防ぐ。
+        if (event.cron === '*/10 21,22 * * *') {
+            ctx.waitUntil(sendDailyPushOnce(env, supabase))
         }
     }
 }
