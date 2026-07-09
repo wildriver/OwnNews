@@ -38,6 +38,9 @@ export interface LocalInteraction {
     perspective_score?: number
     emotion_score?: number
     immediacy_score?: number
+    /** 閲覧時間（秒）と最大スクロール到達度(0-1)。興味の強さ推定に使う */
+    dwell_seconds?: number
+    scroll_depth?: number
     /** 運営Supabaseへ同期済みか */
     synced?: boolean
 }
