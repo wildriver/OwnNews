@@ -12,11 +12,14 @@ import { KeywordBar } from '@/components/keyword-cloud'
 import { NutrientRadarInfo } from '@/components/nutrient-radar-info'
 import { TopicTransitionChart } from '@/components/topic-transition-chart'
 import { GlobalCategoryBar } from '@/components/global-category-bar'
+import { SeasonalCategoryChart, HourlyActivityChart } from '@/components/seasonal-chart'
 import {
     computeHealthStats,
     computeActivityHistory,
     computeHealthSeries,
     computeGlobalCategoryDistribution,
+    computeSeasonalCategories,
+    computeHourlyDistribution,
     Period,
 } from '@/lib/client/health-local'
 import { getAllInteractions, getAllArticles } from '@/lib/client/store'
@@ -59,6 +62,15 @@ export default function DashboardPage() {
     const globalCategoryDist = useMemo(
         () => computeGlobalCategoryDistribution(articles),
         [articles]
+    )
+    // Phase 2: 季節・時間帯の関心（全期間の履歴から集計。期間フィルタ非依存）
+    const seasonal = useMemo(
+        () => interactions ? computeSeasonalCategories(interactions) : { data: [], categories: [], total: 0 },
+        [interactions]
+    )
+    const hourly = useMemo(
+        () => interactions ? computeHourlyDistribution(interactions) : [],
+        [interactions]
     )
 
     if (!interactions || !healthStats) {
@@ -117,8 +129,14 @@ export default function DashboardPage() {
                     <NutrientRadarInfo averages={healthStats.nutrient_averages} />
                 </div>
 
-                {/* Row 2: Activity */}
-                <ActivityBarChart data={activityHistory} />
+                {/* 季節ごとの関心（月×カテゴリ） */}
+                <SeasonalCategoryChart data={seasonal.data} categories={seasonal.categories} total={seasonal.total} />
+
+                {/* Row 2: Activity + 時間帯 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <ActivityBarChart data={activityHistory} />
+                    <HourlyActivityChart data={hourly} />
+                </div>
 
                 {/* Row 2: Transition Line Chart */}
                 <TopicTransitionChart series={healthSeries} />

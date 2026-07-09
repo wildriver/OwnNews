@@ -184,6 +184,74 @@ export function computeHealthSeries(all: LocalInteraction[], period: Period = '3
         .map(([date, counts]) => ({ date, counts }))
 }
 
+// ============================================================
+// Phase 2: 季節・時間帯の関心分析（タイムスタンプ付き履歴から集計）
+// ============================================================
+
+function isView(i: LocalInteraction): boolean {
+    return i.type === 'view' || i.type === 'deep_dive'
+}
+
+/** 直近12ヶ月の「月 × カテゴリ」閲覧数。積み上げグラフ用。
+ *  春はスポーツ多め・冬は減る、といった季節の関心変化を可視化する。 */
+export function computeSeasonalCategories(all: LocalInteraction[]): {
+    data: Record<string, string | number>[]
+    categories: string[]
+    total: number
+} {
+    const views = all.filter(isView)
+    const now = new Date()
+    const months: { key: string; label: string }[] = []
+    for (let m = 11; m >= 0; m--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - m, 1)
+        months.push({
+            key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+            label: `${d.getMonth() + 1}月`,
+        })
+    }
+    const monthKeys = new Set(months.map(m => m.key))
+    const byMonth: Record<string, Record<string, number>> = {}
+    for (const m of months) byMonth[m.key] = {}
+
+    const catCount: Record<string, number> = {}
+    let total = 0
+    for (const i of views) {
+        const d = new Date(i.created_at)
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        if (!monthKeys.has(key)) continue
+        for (const c of (i.category || '').split(',')) {
+            const t = c.trim()
+            if (!t) continue
+            byMonth[key][t] = (byMonth[key][t] || 0) + 1
+            catCount[t] = (catCount[t] || 0) + 1
+            total++
+        }
+    }
+    // 閲覧が多いカテゴリ上位8つに絞る（凡例が煩雑にならないよう）
+    const categories = Object.entries(catCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([c]) => c)
+
+    const data = months.map(m => {
+        const row: Record<string, string | number> = { label: m.label }
+        for (const c of categories) row[c] = byMonth[m.key][c] || 0
+        return row
+    })
+    return { data, categories, total }
+}
+
+/** 時間帯別（0-23時）の閲覧数。いつニュースを読んでいるかの傾向。 */
+export function computeHourlyDistribution(all: LocalInteraction[]): { label: string; count: number }[] {
+    const views = all.filter(isView)
+    const hours = Array.from({ length: 24 }, (_, h) => ({ label: `${h}`, count: 0 }))
+    for (const i of views) {
+        const h = new Date(i.created_at).getHours()
+        if (h >= 0 && h < 24) hours[h].count++
+    }
+    return hours
+}
+
 /** 記事パック全体のカテゴリ分布（ジャンル母集団の可視化用） */
 export function computeGlobalCategoryDistribution(articles: PackArticle[]): { category: string; count: number }[] {
     const dist: Record<string, number> = {}
