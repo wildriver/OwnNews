@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
-    Download, Upload, ShieldCheck, SlidersHorizontal, Brain, RefreshCw, Cloud, LogOut,
+    Download, Upload, ShieldCheck, SlidersHorizontal, Brain, RefreshCw, Cloud, LogOut, Bell,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -19,6 +19,7 @@ import {
 } from '@/lib/client/store'
 import { LocalInteraction } from '@/lib/client/types'
 import { getUserEmail, pushSettings, pushVector, SYNCED_EVENT } from '@/lib/client/sync'
+import { getSubscriptionState, subscribePush, unsubscribePush } from '@/lib/client/push'
 import { LocalFilterSlider } from '@/components/local-filter-slider'
 import { RSS_CATEGORIES, loadExcluded, saveExcluded } from '@/components/category-filter-bar'
 
@@ -31,6 +32,8 @@ export default function SettingsPage() {
     const [articleCount, setArticleCount] = useState(0)
     const [lastSync, setLastSync] = useState<string>('')
     const [syncing, setSyncing] = useState(false)
+    const [pushState, setPushState] = useState<'unsupported' | 'denied' | 'subscribed' | 'unsubscribed'>('unsupported')
+    const [pushBusy, setPushBusy] = useState(false)
 
     const reload = async () => {
         const [ints, arts, vec, str, syncMs] = await Promise.all([
@@ -51,9 +54,27 @@ export default function SettingsPage() {
     useEffect(() => {
         getUserEmail().then(e => setEmail(e ?? ''))
         reload()
+        getSubscriptionState().then(setPushState)
         window.addEventListener(SYNCED_EVENT, reload)
         return () => window.removeEventListener(SYNCED_EVENT, reload)
     }, [])
+
+    // ---- 通知 ----
+    const handlePushToggle = async () => {
+        setPushBusy(true)
+        try {
+            if (pushState === 'subscribed') {
+                const r = await unsubscribePush()
+                if (r.ok) toast.info(r.message); else toast.error(r.message)
+            } else {
+                const r = await subscribePush()
+                if (r.ok) toast.success(r.message); else toast.error(r.message)
+            }
+            setPushState(await getSubscriptionState())
+        } finally {
+            setPushBusy(false)
+        }
+    }
 
     // ---- フィード調整（運営Supabaseへ同期） ----
     const handleStrengthChange = async (v: number) => {
@@ -202,6 +223,50 @@ export default function SettingsPage() {
                         推薦アルゴリズムをサーバー側で実行することはありません。データは他のユーザーからは見えません。
                     </p>
                 </div>
+
+                {/* 通知 */}
+                <Card className="border-border bg-card">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-[15px] flex items-center gap-2">
+                            <Bell className="w-4 h-4 text-primary" />
+                            毎日のニュース通知
+                        </CardTitle>
+                        <CardDescription className="text-[12px]">
+                            新しいニュースが届いたら、毎朝1回プッシュ通知でお知らせします。
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div className="text-[13px]">
+                                状態: {
+                                    pushState === 'subscribed' ? <span className="text-primary font-medium">オン</span>
+                                        : pushState === 'denied' ? <span className="text-rose-600">ブラウザでブロック中</span>
+                                            : pushState === 'unsupported' ? <span className="text-muted-foreground">この端末では非対応</span>
+                                                : <span className="text-muted-foreground">オフ</span>
+                                }
+                            </div>
+                            <Button
+                                size="sm"
+                                onClick={handlePushToggle}
+                                disabled={pushBusy || pushState === 'unsupported' || pushState === 'denied'}
+                                className={pushState === 'subscribed'
+                                    ? 'bg-secondary text-foreground hover:bg-secondary/80 border border-border'
+                                    : 'bg-primary hover:bg-primary/90 text-primary-foreground'}
+                            >
+                                {pushBusy ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Bell className="w-3.5 h-3.5 mr-1.5" />}
+                                {pushState === 'subscribed' ? '通知をオフにする' : '通知をオンにする'}
+                            </Button>
+                        </div>
+                        {pushState === 'denied' && (
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                ブラウザの設定でこのサイトの通知がブロックされています。サイト設定から許可に変更してください。
+                            </p>
+                        )}
+                        <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+                            ※ iPhoneのSafariでは、先に「ホーム画面に追加」してから開くと通知を受け取れます。
+                        </p>
+                    </CardContent>
+                </Card>
 
                 {/* 2. フィードの調整 */}
                 <Card className="border-border bg-card">

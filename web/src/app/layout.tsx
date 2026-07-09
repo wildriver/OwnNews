@@ -11,6 +11,8 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "OwnNews | 情報的健康を保つニュースフィード",
   description: "ニュースを食事になぞらえ、情報摂取のバランスを可視化するローカルファースト・ニュースリーダー。",
+  manifest: "/manifest.json",
+  appleWebApp: { capable: true, title: "OwnNews", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
