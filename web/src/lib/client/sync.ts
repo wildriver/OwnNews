@@ -11,7 +11,7 @@
 
 import { createClient } from '@/lib/supabase/client'
 import {
-    getAllInteractions, markInteractionsSynced, putInteraction, setKV, getKV, clearAll,
+    getAllInteractions, markInteractionsSynced, putInteraction, deleteInteractions, setKV, getKV, clearAll,
 } from './store'
 import { LocalInteraction, InteractionType } from './types'
 
@@ -95,29 +95,41 @@ async function doPull(): Promise<RemoteState | null> {
                 .limit(2000),
         ])
 
-        // リモート操作履歴をローカルキャッシュへ反映（同期済みフラグ付き）
+        // リモート操作履歴をローカルキャッシュへ反映（リモートを真実として突き合わせ）
         if (remoteInts) {
-            const localByKey = new Map(
-                (await getAllInteractions()).map(i => [`${i.article_id}|${i.type}`, i])
-            )
+            const local = await getAllInteractions()
+            const remoteKeys = new Set(remoteInts.map(r => `${r.article_id}|${r.interaction_type}`))
+            // 未pushのローカル操作は保持（サーバーにまだ無いだけ）
+            const localUnsyncedKeys = new Set(local.filter(l => !l.synced).map(l => `${l.article_id}|${l.type}`))
+
+            // 1) サーバーから消えた同期済みローカル行を削除（サーバー側削除を反映）。
+            //    ただしpullは最新2000件までなので、それ以前の「窓の外」は誤削除しない。
+            const windowed = remoteInts.length >= 2000
+            const oldestRemote = remoteInts.length ? remoteInts[remoteInts.length - 1].created_at : ''
+            const toDelete = local
+                .filter(l => l.synced
+                    && !remoteKeys.has(`${l.article_id}|${l.type}`)
+                    && !(windowed && l.created_at < oldestRemote))
+                .map(l => [l.article_id, l.type] as [string, string])
+            await deleteInteractions(toDelete)
+
+            // 2) リモート行を取り込み（同期済みローカルは上書き＝タイトル補完等を反映。
+            //    未pushのローカルは温存）
             for (const r of remoteInts) {
                 const key = `${r.article_id}|${r.interaction_type}`
-                const local = localByKey.get(key)
-                // 未取り込み、またはリモートのdwellの方が大きければ取り込む
-                if (!local || (r.dwell_seconds || 0) > (local.dwell_seconds || 0)) {
-                    await putInteraction({
-                        article_id: r.article_id,
-                        type: r.interaction_type as InteractionType,
-                        created_at: r.created_at,
-                        category: r.category || undefined,
-                        category_medium: r.category_medium || undefined,
-                        title: r.title || undefined,
-                        link: r.link || undefined,
-                        dwell_seconds: r.dwell_seconds || undefined,
-                        scroll_depth: r.scroll_depth || undefined,
-                        synced: true,
-                    })
-                }
+                if (localUnsyncedKeys.has(key)) continue
+                await putInteraction({
+                    article_id: r.article_id,
+                    type: r.interaction_type as InteractionType,
+                    created_at: r.created_at,
+                    category: r.category || undefined,
+                    category_medium: r.category_medium || undefined,
+                    title: r.title || undefined,
+                    link: r.link || undefined,
+                    dwell_seconds: r.dwell_seconds || undefined,
+                    scroll_depth: r.scroll_depth || undefined,
+                    synced: true,
+                })
             }
         }
 
