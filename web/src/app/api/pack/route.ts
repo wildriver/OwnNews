@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { stripHtml } from '@/lib/news'
 
 export const runtime = 'edge'
 
@@ -115,7 +116,7 @@ export async function GET(request: NextRequest) {
             id: a.id,
             title: a.title,
             link: a.link,
-            summary: (a.summary || '').slice(0, 300),
+            summary: stripHtml(a.summary || '').slice(0, 300),
             published: a.published,
             category: a.category,
             category_medium: a.category_medium,

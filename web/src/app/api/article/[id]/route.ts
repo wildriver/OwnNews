@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { stripHtml } from '@/lib/news'
 
 export const runtime = 'edge'
 
@@ -23,7 +24,10 @@ export async function GET(
         return NextResponse.json({ error: 'not found' }, { status: 404 })
     }
 
-    return NextResponse.json(data, {
+    // RSS summaryのHTMLを除去してから返す（詳細ページは長めに残す）
+    const clean = { ...data, summary: stripHtml(data.summary || '').slice(0, 600) }
+
+    return NextResponse.json(clean, {
         headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600' },
     })
 }

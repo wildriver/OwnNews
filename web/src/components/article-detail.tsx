@@ -17,7 +17,7 @@ import { getAllArticles } from '@/lib/client/store'
 import { PackArticle } from '@/lib/client/types'
 import { decodeEmb, cosine, GROUPING_THRESHOLD } from '@/lib/client/engine'
 import { recordInteraction } from '@/lib/client/interactions'
-import { extractSourceName } from '@/lib/news'
+import { extractSourceName, stripHtml } from '@/lib/news'
 
 interface RelatedItem {
     id: string
@@ -204,7 +204,7 @@ export function ArticleDetail({ id }: { id: string }) {
                     <div className="bg-card border border-border rounded-xl p-6 md:p-8">
                         <h2 className="text-xl font-bold text-foreground mb-4">概要</h2>
                         <p className="text-zinc-700 leading-relaxed text-lg whitespace-pre-wrap">
-                            {article.summary}
+                            {stripHtml(article.summary)}
                         </p>
                     </div>
 

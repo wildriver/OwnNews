@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { GroupedArticle } from '@/lib/types'
 import { recordInteraction } from '@/lib/client/interactions'
 import { InteractionType } from '@/lib/client/types'
-import { extractSourceName } from '@/lib/news'
+import { extractSourceName, stripHtml } from '@/lib/news'
 
 interface ArticleCardProps {
     article: GroupedArticle
@@ -260,7 +260,7 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
                             {article.title}
                         </h3>
                         <p className="text-muted-foreground leading-relaxed line-clamp-2" style={{ fontSize: 'var(--fs-body)' }}>
-                            {article.summary}
+                            {stripHtml(article.summary)}
                         </p>
                         {metaBottom}
                     </div>
