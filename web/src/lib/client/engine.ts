@@ -63,12 +63,36 @@ export function normalize(v: number[]): number[] {
 
 // ---- 関心ベクトルの更新（クリック履歴からの学習） ----
 
-/** 操作種別ごとの学習率 */
+/** 操作種別ごとの学習率。view はクリック単体では学習せず、閲覧時間(dwell)で重み付けする */
 const LEARNING_RATE: Record<string, number> = {
-    view: 0.12,
+    view: 0,          // クリックしただけでは学習しない（dwellで反映）
     deep_dive: 0.25,
 }
 const NEGATIVE_RATE = 0.15  // 興味なし
+
+/** 明示的な学習率αで関心ベクトルを正方向へ更新する（閲覧時間に応じた重み付け用）。
+ *  v ← normalize((1-α)·v + α·e) */
+export function updateVectorWeighted(current: number[] | null, embB64: string, alpha: number): number[] | null {
+    if (alpha <= 0) return current
+    const e = decodeEmb(embB64)
+    if (!current || current.length === 0) return normalize(Array.from(e))
+    const v = current.slice()
+    for (let i = 0; i < v.length && i < e.length; i++) v[i] = (1 - alpha) * v[i] + alpha * e[i]
+    return normalize(v)
+}
+
+/** 閲覧時間(秒)とスクロール到達度(0-1)からエンゲージメント学習率を求める。
+ *  すぐ閉じた記事は0（学習しない）、じっくり読んだ記事ほど重い。 */
+export function engagementAlpha(dwellSec: number, scrollDepth: number): number {
+    let a: number
+    if (dwellSec < 5) a = 0             // バウンス（開いてすぐ閉じた）: 反映しない
+    else if (dwellSec < 15) a = 0.06    // ざっと見た
+    else if (dwellSec < 40) a = 0.12    // 読んだ
+    else if (dwellSec < 120) a = 0.20   // じっくり
+    else a = 0.25                       // 熟読
+    if (a > 0 && scrollDepth >= 0.7) a = Math.min(0.3, a + 0.05)  // 最後まで読んだら加点
+    return a
+}
 
 /**
  * 指数移動平均で関心ベクトルを更新する。

@@ -89,7 +89,7 @@ async function doPull(): Promise<RemoteState | null> {
             supabase.from('user_profile').select('filter_strength, excluded_categories').eq('user_id', email).maybeSingle(),
             supabase.from('user_vectors').select('vector_m3, updated_at').eq('user_id', email).maybeSingle(),
             supabase.from('user_interactions')
-                .select('article_id, interaction_type, created_at, category, category_medium, title, link')
+                .select('article_id, interaction_type, created_at, category, category_medium, title, link, dwell_seconds, scroll_depth')
                 .eq('user_id', email)
                 .order('created_at', { ascending: false })
                 .limit(2000),
@@ -102,7 +102,9 @@ async function doPull(): Promise<RemoteState | null> {
             )
             for (const r of remoteInts) {
                 const key = `${r.article_id}|${r.interaction_type}`
-                if (!localByKey.has(key)) {
+                const local = localByKey.get(key)
+                // 未取り込み、またはリモートのdwellの方が大きければ取り込む
+                if (!local || (r.dwell_seconds || 0) > (local.dwell_seconds || 0)) {
                     await putInteraction({
                         article_id: r.article_id,
                         type: r.interaction_type as InteractionType,
@@ -111,6 +113,8 @@ async function doPull(): Promise<RemoteState | null> {
                         category_medium: r.category_medium || undefined,
                         title: r.title || undefined,
                         link: r.link || undefined,
+                        dwell_seconds: r.dwell_seconds || undefined,
+                        scroll_depth: r.scroll_depth || undefined,
                         synced: true,
                     })
                 }
@@ -160,6 +164,8 @@ export function pushInteraction(i: LocalInteraction): void {
             category_medium: i.category_medium || '',
             title: i.title || '',
             link: i.link || '',
+            dwell_seconds: i.dwell_seconds ?? 0,
+            scroll_depth: i.scroll_depth ?? 0,
         }, { onConflict: 'user_id, article_id, interaction_type' }).then(({ error }) => {
             if (!error) markInteractionsSynced([[i.article_id, i.type]])
         })
@@ -182,6 +188,8 @@ async function pushUnsyncedInteractions(): Promise<void> {
         category_medium: i.category_medium || '',
         title: i.title || '',
         link: i.link || '',
+        dwell_seconds: i.dwell_seconds ?? 0,
+        scroll_depth: i.scroll_depth ?? 0,
     }))
     const { error } = await supabase.from('user_interactions').upsert(rows, { onConflict: 'user_id, article_id, interaction_type' })
     if (!error) await markInteractionsSynced(unsynced.map(i => [i.article_id, i.type]))

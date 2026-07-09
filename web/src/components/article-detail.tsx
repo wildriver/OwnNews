@@ -16,7 +16,7 @@ import { DeepDiveDialog } from '@/components/deep-dive-dialog'
 import { getAllArticles } from '@/lib/client/store'
 import { PackArticle } from '@/lib/client/types'
 import { decodeEmb, cosine, GROUPING_THRESHOLD } from '@/lib/client/engine'
-import { recordInteraction } from '@/lib/client/interactions'
+import { recordInteraction, recordDwell } from '@/lib/client/interactions'
 import { extractSourceName, stripHtml } from '@/lib/news'
 
 interface RelatedItem {
@@ -36,11 +36,50 @@ export function ArticleDetail({ id }: { id: string }) {
     const [pack, setPack] = useState<PackArticle[]>([])
     const [status, setStatus] = useState<'loading' | 'ready' | 'notfound'>('loading')
 
-    // 記事を開いた時点で「閲覧」を記録する。これによりフィードから既読が消え、
-    // 関心ベクトルも学習される（フィードからの遷移・直リンクの両方をカバー）。
+    // 記事を開いた時点で「閲覧」を記録（既読反映・履歴）。
+    // ベクトルへの反映は開いた瞬間ではなく、離脱時の閲覧時間(dwell)で重み付けする。
     useEffect(() => {
         recordInteraction(id, 'view')
     }, [id])
+
+    // 閲覧時間・スクロール到達度の計測 → 離脱時に recordDwell（興味の強さ推定）
+    useEffect(() => {
+        if (status !== 'ready') return
+        const scroller = document.querySelector('main')
+        let activeMs = 0
+        let start = document.visibilityState === 'visible' ? performance.now() : 0
+        let maxScroll = 0
+        let done = false
+
+        const onScroll = () => {
+            if (!scroller) return
+            const denom = Math.max(1, scroller.scrollHeight - scroller.clientHeight)
+            const d = denom <= 1 ? 1 : scroller.scrollTop / denom  // 短い記事は全部見えている=1
+            if (d > maxScroll) maxScroll = Math.min(1, d)
+        }
+        onScroll()
+        scroller?.addEventListener('scroll', onScroll, { passive: true })
+
+        const pause = () => { if (start) { activeMs += performance.now() - start; start = 0 } }
+        const resume = () => { if (!start) start = performance.now() }
+        const onVis = () => { if (document.hidden) pause(); else resume() }
+        const finalize = () => {
+            if (done) return
+            done = true
+            pause()
+            const sec = Math.round(activeMs / 1000)
+            if (sec >= 2) recordDwell(id, sec, maxScroll)  // 2秒未満は誤操作として無視
+        }
+
+        document.addEventListener('visibilitychange', onVis)
+        window.addEventListener('pagehide', finalize)
+        return () => {
+            document.removeEventListener('visibilitychange', onVis)
+            window.removeEventListener('pagehide', finalize)
+            scroller?.removeEventListener('scroll', onScroll)
+            finalize()  // ページ遷移（アンマウント）で確定
+        }
+    }, [id, status])
 
     useEffect(() => {
         let cancelled = false
