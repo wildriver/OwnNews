@@ -97,13 +97,47 @@ function parseAnalysisResponse(raw: unknown): Record<string, CategorizationResul
 }
 
 async function analyzeWithWorkersAI(env: Env, articles: Article[]): Promise<Record<string, CategorizationResult>> {
-    const chatResponse = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+    // 旧 @cf/meta/llama-3.1-8b-instruct は 2026-05-30 に廃止。現行のfp8版に差し替え。
+    const chatResponse = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fp8', {
         messages: [
             { role: 'system', content: 'You are a precise JSON output machine.' },
             { role: 'user', content: buildAnalysisPrompt(articles) }
-        ]
+        ],
+        // 明示しないと出力が既定上限で途中切れし、JSON配列が壊れて解析失敗する
+        max_tokens: 2048,
     })
     return parseAnalysisResponse(chatResponse?.response)
+}
+
+/**
+ * 記事群を小さいサブバッチに分けて分析する。
+ * 8Bの小型モデルは長い構造化出力（50件のJSON配列など）を安定して返せないため、
+ * 8件ずつに分割して解析成功率を上げる。チャンク単位で Workers AI → Groq フォールバック。
+ * 1チャンク失敗しても他チャンクには影響しない。
+ */
+const ANALYSIS_SUBBATCH = 8
+
+async function analyzeArticles(env: Env, articles: Article[]): Promise<Record<string, CategorizationResult>> {
+    const result: Record<string, CategorizationResult> = {}
+    for (let i = 0; i < articles.length; i += ANALYSIS_SUBBATCH) {
+        const chunk = articles.slice(i, i + ANALYSIS_SUBBATCH)
+        let map: Record<string, CategorizationResult> = {}
+        try {
+            map = await analyzeWithWorkersAI(env, chunk)
+            if (Object.keys(map).length === 0) throw new Error('Workers AI returned no parseable results')
+        } catch (e) {
+            console.error(`Workers AI analysis failed for chunk ${i / ANALYSIS_SUBBATCH}:`, e)
+            if (env.GROQ_API_KEY) {
+                try {
+                    map = await analyzeWithGroq(env.GROQ_API_KEY, chunk)
+                } catch (ge) {
+                    console.error('Groq fallback also failed:', ge)
+                }
+            }
+        }
+        Object.assign(result, map)
+    }
+    return result
 }
 
 /** Workers AI のNeurons枯渇・障害時のフォールバック（Groq無料枠） */
@@ -121,7 +155,8 @@ async function analyzeWithGroq(apiKey: string, articles: Article[]): Promise<Rec
                 { role: 'user', content: buildAnalysisPrompt(articles) }
             ],
             temperature: 0.1,
-            max_tokens: 4096,
+            // 8件チャンク分の出力に十分。大きすぎるとGroq無料枠で413になる
+            max_tokens: 1500,
         }),
     })
     if (!resp.ok) throw new Error(`Groq HTTP ${resp.status}`)
@@ -284,25 +319,8 @@ export default {
                 return
             }
 
-            // 3. Categorize & Analyze Nutrients (Workers AI → 失敗時はGroqフォールバック)
-            let categoryMap: Record<string, CategorizationResult> = {}
-            try {
-                categoryMap = await analyzeWithWorkersAI(env, articles)
-                if (Object.keys(categoryMap).length === 0) {
-                    throw new Error('Workers AI returned no parseable results')
-                }
-            } catch (e) {
-                console.error('Workers AI analysis failed:', e)
-                if (env.GROQ_API_KEY) {
-                    try {
-                        console.log('Falling back to Groq for analysis...')
-                        categoryMap = await analyzeWithGroq(env.GROQ_API_KEY, articles)
-                    } catch (ge) {
-                        console.error('Groq fallback also failed:', ge)
-                        // 埋め込みだけでも保存する（分析は次回以降のバックフィルに委ねる）
-                    }
-                }
-            }
+            // 3. Categorize & Analyze Nutrients（8件ずつのサブバッチ、失敗時Groq）
+            const categoryMap = await analyzeArticles(env, articles)
 
             // 4. Update Supabase
             const updates = articles.map((a, index) => {
@@ -333,6 +351,50 @@ export default {
             }
         } else {
             console.log('No articles to process.')
+        }
+
+        // 3.5 栄養素バックフィル: 埋め込みはあるが栄養素が未生成の記事を分析する。
+        //     （新規記事の埋め込み処理とは別に、過去の解析失敗分を毎回32件ずつ埋めていく）
+        try {
+            const { data: needScore } = await supabase
+                .from('articles')
+                .select('id, title, link, summary, category_medium, category_minor')
+                .not('embedding_m3', 'is', null)
+                .is('fact_score', null)
+                .order('collected_at', { ascending: false })
+                .limit(32)
+
+            if (needScore && needScore.length > 0) {
+                console.log(`Backfilling nutrients for ${needScore.length} articles...`)
+                const map = await analyzeArticles(env, needScore as Article[])
+                const rows = needScore
+                    .filter(a => map[a.id])
+                    .map(a => {
+                        const c = map[a.id]
+                        return {
+                            id: a.id,
+                            title: a.title,   // NOT NULL列。upsertのINSERT節を満たすため必須
+                            link: a.link,     // NOT NULL列
+                            category_medium: c.category_medium || a.category_medium,
+                            category_minor: c.category_minor || a.category_minor,
+                            fact_score: c.fact_score ?? null,
+                            context_score: c.context_score ?? null,
+                            perspective_score: c.perspective_score ?? null,
+                            emotion_score: c.emotion_score ?? null,
+                            immediacy_score: c.immediacy_score ?? null,
+                        }
+                    })
+                if (rows.length > 0) {
+                    const { error: bfError } = await supabase.from('articles').upsert(rows, { onConflict: 'id' })
+                    if (bfError) console.error('Backfill update error:', bfError)
+                    else {
+                        processedCount += rows.length
+                        console.log(`Backfilled nutrients for ${rows.length} articles.`)
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Nutrient backfill error:', e)
         }
 
         // 5. パック生成 → R2
