@@ -96,3 +96,25 @@ export function extractSourceName(url: string): string {
         return "UNKNOWN"
     }
 }
+
+/**
+ * RSSのsummaryに含まれるHTMLタグ・エンティティを除去してプレーンテキスト化する。
+ * RSS summaryは「本文＋末尾に<br><a><img>断片」の形が多く、そのまま表示すると
+ * タグが文字として見えてしまう。表示前・パック生成前の両方で使う。
+ */
+export function stripHtml(input: string): string {
+    if (!input) return ""
+    return input
+        .replace(/<[^>]*>/g, " ")   // 完結したタグ
+        .replace(/<[^>]*$/g, "")    // 末尾の未完タグ（300文字切りで途中で切れた分）
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&apos;/gi, "'")
+        .replace(/&hellip;/gi, "…")
+        .replace(/&#\d+;/g, "")      // 残りの数値実体は削除
+        .replace(/\s+/g, " ")        // 連続空白を1つに
+        .trim()
+}

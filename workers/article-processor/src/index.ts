@@ -32,6 +32,24 @@ interface CategorizationResult {
 /** パックに含める記事数（直近） */
 const PACK_SIZE = 800
 
+/** RSS summaryのHTMLタグ・エンティティを除去してプレーンテキスト化する（web側 stripHtml と対） */
+function stripHtml(input: string): string {
+    if (!input) return ''
+    return input
+        .replace(/<[^>]*>/g, ' ')          // 完結したタグ
+        .replace(/<[^>]*$/g, '')             // 末尾の未完タグ（300文字切りで途中で切れた分）
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&apos;/gi, "'")
+        .replace(/&hellip;/gi, '…')
+        .replace(/&#\d+;/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+}
+
 /** Secretsに入力されたURLの揺れ（スキーム欠落・前後空白・末尾スラッシュ）を吸収する */
 function normalizeSupabaseUrl(raw: string): string {
     let u = (raw || '').trim().replace(/\/+$/, '')
@@ -61,7 +79,7 @@ function buildAnalysisPrompt(articles: Article[]): string {
     - immediacy_score (Water): Base on freshness/urgency. High: Breaking news/Live. Low: Evergreen/History.
 
     Input Articles:
-    ${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, summary: (a.summary || '').slice(0, 300) })), null, 2)}
+    ${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, summary: stripHtml(a.summary || '').slice(0, 300) })), null, 2)}
 
     Instructions:
     1. Analyze each article title and summary.
@@ -220,7 +238,7 @@ async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket)
             id: a.id,
             title: a.title,
             link: a.link,
-            summary: (a.summary || '').slice(0, 300),
+            summary: stripHtml(a.summary || '').slice(0, 300),
             published: a.published,
             category: a.category,
             category_medium: a.category_medium,
