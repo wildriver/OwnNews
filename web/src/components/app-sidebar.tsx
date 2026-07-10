@@ -5,12 +5,13 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { LayoutDashboard, Newspaper, Settings, Activity, History, LogOut } from 'lucide-react'
+import { LayoutDashboard, Newspaper, Settings, Activity, History, LogOut, ShieldCheck } from 'lucide-react'
 import { HealthStats } from '@/lib/types'
 import { DateFilterClient } from '@/components/date-filter-client'
 import { getAllInteractions } from '@/lib/client/store'
 import { computeHealthStats } from '@/lib/client/health-local'
 import { INTERACTION_EVENT } from '@/lib/client/interactions'
+import { checkIsAdmin } from '@/lib/client/admin'
 
 const NAV_ITEMS = [
     { href: '/', label: 'ニュース', icon: Newspaper },
@@ -22,6 +23,14 @@ const NAV_ITEMS = [
 export function AppSidebar({ userEmail }: { userEmail: string }) {
     const pathname = usePathname()
     const [healthStats, setHealthStats] = useState<HealthStats | null>(null)
+    const [isAdmin, setIsAdmin] = useState(false)
+
+    // 運営（管理者）だけに「運営」リンクを出す。判定はDB側RPCで行う。
+    useEffect(() => {
+        let cancelled = false
+        checkIsAdmin().then(ok => { if (!cancelled) setIsAdmin(ok) }).catch(() => {})
+        return () => { cancelled = true }
+    }, [])
 
     useEffect(() => {
         let cancelled = false
@@ -55,7 +64,7 @@ export function AppSidebar({ userEmail }: { userEmail: string }) {
             <ScrollArea className="flex-1 px-3 py-1">
                 <div className="space-y-4">
                     <nav className="space-y-0.5">
-                        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+                        {[...NAV_ITEMS, ...(isAdmin ? [{ href: '/admin', label: '運営', icon: ShieldCheck }] : [])].map(({ href, label, icon: Icon }) => {
                             const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
                             return (
                                 <Link
