@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { SafeImage } from '@/components/safe-image'
 import { ClientNutrientRadar } from '@/components/client-nutrient-radar'
 import { DeepDiveDialog } from '@/components/deep-dive-dialog'
+import { DiscussionPanel } from '@/components/discussion-panel'
 import { getAllArticles } from '@/lib/client/store'
 import { PackArticle } from '@/lib/client/types'
 import { decodeEmb, cosine, GROUPING_THRESHOLD } from '@/lib/client/engine'
@@ -283,6 +284,9 @@ export function ArticleDetail({ id }: { id: string }) {
                             </a>
                         </Button>
                     </div>
+
+                    {/* みんなの反応（X連携＋はてブコメント） */}
+                    <DiscussionPanel title={article.title} link={article.link} />
 
                     {/* 別の視点で読む（同一トピック） */}
                     {sameGroup.length > 0 && (
