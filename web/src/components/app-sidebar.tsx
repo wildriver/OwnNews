@@ -151,9 +151,15 @@ export function AppSidebar({ userEmail }: { userEmail: string }) {
                 </div>
                 <Link
                     href="/about"
-                    className="block px-3 pb-1 text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors"
+                    className="block px-3 pb-0.5 text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors"
                 >
                     このサービスについて（運営者情報）
+                </Link>
+                <Link
+                    href="/algorithm"
+                    className="block px-3 pb-1 text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors"
+                >
+                    アルゴリズムの開示
                 </Link>
                 <form action="/auth/signout" method="post">
                     <button
