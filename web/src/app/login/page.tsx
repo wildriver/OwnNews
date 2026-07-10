@@ -64,6 +64,12 @@ export default function LoginPage() {
                         </svg>
                         Googleでログイン
                     </Button>
+
+                    <p className="text-center">
+                        <a href="/welcome" className="text-[12px] text-muted-foreground hover:text-primary transition-colors">
+                            OwnNewsとは？ — サービス紹介を見る
+                        </a>
+                    </p>
                 </CardContent>
             </Card>
         </div>
