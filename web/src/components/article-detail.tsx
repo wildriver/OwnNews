@@ -14,6 +14,7 @@ import { SafeImage } from '@/components/safe-image'
 import { ClientNutrientRadar } from '@/components/client-nutrient-radar'
 import { DeepDiveDialog } from '@/components/deep-dive-dialog'
 import { DiscussionPanel } from '@/components/discussion-panel'
+import { ReactionBar } from '@/components/reaction-bar'
 import { getAllArticles } from '@/lib/client/store'
 import { PackArticle } from '@/lib/client/types'
 import { decodeEmb, cosine, GROUPING_THRESHOLD } from '@/lib/client/engine'
@@ -284,6 +285,9 @@ export function ArticleDetail({ id }: { id: string }) {
                             </a>
                         </Button>
                     </div>
+
+                    {/* この記事への反応（1タップの主観表明） */}
+                    <ReactionBar articleId={article.id} />
 
                     {/* みんなの反応（X連携＋はてブコメント） */}
                     <DiscussionPanel title={article.title} link={article.link} />
