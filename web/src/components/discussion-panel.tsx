@@ -20,6 +20,36 @@ interface HatenaData {
     comments: HatenaComment[]
 }
 
+// ---- モバイルではXアプリを優先して開く ----
+// スマホのブラウザでWeb版Xを開くとログインを求められがちなので、
+// twitter:// スキームでアプリの画面を直接開く。アプリ未インストール時は
+// 一定時間たってもページが隠れない（=アプリに切り替わらなかった）ことを
+// 検知して従来のWeb版URLへフォールバックする。
+function isMobileDevice(): boolean {
+    if (typeof navigator === 'undefined') return false
+    const ua = navigator.userAgent
+    // iPadOSはMac風UAを名乗るためタッチ点数でも判定
+    return /Android|iPhone|iPad|iPod/i.test(ua) || (/Mac/i.test(ua) && navigator.maxTouchPoints > 1)
+}
+
+function openInXApp(appUrl: string, webUrl: string): void {
+    let done = false
+    const timer = setTimeout(() => {
+        if (!done && !document.hidden) {
+            done = true
+            window.location.href = webUrl  // アプリが開かなかった → Web版へ
+        }
+    }, 1800)
+    const onHide = () => {
+        // アプリに切り替わった（ページが隠れた）のでフォールバック不要
+        done = true
+        clearTimeout(timer)
+        document.removeEventListener('visibilitychange', onHide)
+    }
+    document.addEventListener('visibilitychange', onHide)
+    window.location.href = appUrl
+}
+
 // Xのロゴ（lucideに現行ロゴが無いためインラインSVG）
 function XLogo({ className }: { className?: string }) {
     return (
@@ -50,6 +80,16 @@ export function DiscussionPanel({ title, link }: { title: string; link: string }
     // 検索は記事URLで行う（シェア投稿は必ずURLを含むため、タイトル検索より確実）
     const xSearchUrl = `https://x.com/search?q=${encodeURIComponent(link)}&f=live`
     const xPostUrl = `https://x.com/intent/post?text=${encodeURIComponent(title)}&url=${encodeURIComponent(link)}`
+    // Xアプリのディープリンク（モバイル用）
+    const xSearchApp = `twitter://search?query=${encodeURIComponent(link)}`
+    const xPostApp = `twitter://post?message=${encodeURIComponent(`${title}\n${link}`)}`
+
+    // モバイルではアプリを試し、ダメならWeb版へ。PCは通常のリンク挙動のまま
+    const onXClick = (appUrl: string) => (e: React.MouseEvent) => {
+        if (!isMobileDevice()) return
+        e.preventDefault()
+        openInXApp(appUrl, (e.currentTarget as HTMLAnchorElement).href)
+    }
 
     return (
         <div className="bg-card border border-border rounded-xl p-6">
@@ -66,6 +106,7 @@ export function DiscussionPanel({ title, link }: { title: string; link: string }
                     href={xSearchUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={onXClick(xSearchApp)}
                     className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 text-[13px] font-medium hover:bg-secondary transition-colors"
                 >
                     <XLogo className="w-4 h-4" />
@@ -76,6 +117,7 @@ export function DiscussionPanel({ title, link }: { title: string; link: string }
                     href={xPostUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={onXClick(xPostApp)}
                     className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 text-[13px] font-medium hover:bg-secondary transition-colors"
                 >
                     <PenLine className="w-4 h-4" />
