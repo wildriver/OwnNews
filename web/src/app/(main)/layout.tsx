@@ -17,7 +17,8 @@ export default async function MainLayout({
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-        redirect('/login')
+        // 未ログインはランディングページへ（サービス紹介＋ログイン導線）
+        redirect('/welcome')
     }
 
     return (
