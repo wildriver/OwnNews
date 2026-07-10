@@ -19,6 +19,10 @@ export interface PackArticle {
     collected_at: string
     /** int8量子化された正規化済み1024次元埋め込み(base64) */
     emb: string | null
+    /** 全ユーザーの閲覧数（パック生成時に焼き込み。0件は省略） */
+    views?: number
+    /** リアクション集計 {agree: 3, surprise: 1, ...}（パック生成時に焼き込み。0件は省略） */
+    reactions?: Record<string, number>
 }
 
 export type InteractionType = 'view' | 'deep_dive' | 'not_interested'

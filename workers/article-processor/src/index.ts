@@ -276,11 +276,29 @@ async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket)
         return
     }
 
+    // ソーシャルシグナル（全ユーザーの閲覧数・リアクション集計）を焼き込む。
+    // クライアントの「バブルの外」が「自分以外の人がよく読む・反応が多い記事」を
+    // 優先できるようにする（世間の窓）。失敗してもパック生成は続行。
+    const socialMap = new Map<string, { views: number; reactions: Record<string, number> }>()
+    try {
+        const { data: social, error: sErr } = await supabase.rpc('article_social_counts')
+        if (sErr) throw sErr
+        for (const s of (social || []) as { article_id: string; views: number; reactions: Record<string, number> }[]) {
+            socialMap.set(s.article_id, { views: Number(s.views) || 0, reactions: s.reactions || {} })
+        }
+    } catch (e) {
+        console.warn('social counts unavailable (run migration?):', e)
+    }
+
     let latest = ''
     const articles = (data || []).map((a) => {
         const vec = parseVector(a.embedding_m3)
         if (a.collected_at > latest) latest = a.collected_at
+        const social = socialMap.get(a.id)
         return {
+            // 0件のフィールドは省略してパックサイズを抑える
+            ...(social && social.views > 0 ? { views: social.views } : {}),
+            ...(social && Object.keys(social.reactions).length > 0 ? { reactions: social.reactions } : {}),
             id: a.id,
             title: a.title,
             link: a.link,

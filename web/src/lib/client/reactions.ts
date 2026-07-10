@@ -18,6 +18,11 @@ export const REACTIONS: { key: ReactionKey; emoji: string; label: string; hint: 
     { key: 'perspective', emoji: '🔭', label: '視点が広がった', hint: '普段と違う見方に出会えた' },
 ]
 
+/** key→絵文字の逆引き（カード等の軽量表示用） */
+export const REACTION_EMOJI: Record<string, string> = Object.fromEntries(
+    REACTIONS.map(r => [r.key, r.emoji])
+)
+
 export interface ReactionState {
     counts: Record<string, number>
     mine: Set<ReactionKey>

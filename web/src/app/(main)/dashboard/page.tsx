@@ -13,6 +13,7 @@ import { NutrientRadarInfo } from '@/components/nutrient-radar-info'
 import { TopicTransitionChart } from '@/components/topic-transition-chart'
 import { GlobalCategoryBar } from '@/components/global-category-bar'
 import { SeasonalCategoryChart, HourlyActivityChart } from '@/components/seasonal-chart'
+import { ReactionStats } from '@/components/reaction-stats'
 import {
     computeHealthStats,
     computeActivityHistory,
@@ -128,6 +129,9 @@ export default function DashboardPage() {
                     <HealthRadarInfo distribution={healthStats.category_distribution} label={periodLabel} />
                     <NutrientRadarInfo averages={healthStats.nutrient_averages} />
                 </div>
+
+                {/* みんなの感情（全体のリアクション分布）＋自分の意見バランス */}
+                <ReactionStats />
 
                 {/* 季節ごとの関心（月×カテゴリ） */}
                 <SeasonalCategoryChart data={seasonal.data} categories={seasonal.categories} total={seasonal.total} />

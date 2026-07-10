@@ -179,6 +179,23 @@ function toArticle(a: PackArticle, sim: number, inBubble: boolean): Article {
 }
 
 /**
+ * ソーシャルスコア = 他の人の注目度。
+ * 閲覧1件=1点、リアクション1件=3点（能動的な表明を重く）。
+ * 自分が読んだ記事はフィードから除外済み(seenIds)なので、
+ * 残った記事のviewsは実質「自分以外の人が読んだ数」になる。
+ */
+function socialScore(a: PackArticle): number {
+    const reacts = a.reactions ? Object.values(a.reactions).reduce((s, n) => s + n, 0) : 0
+    return (a.views ?? 0) + reacts * 3
+}
+
+/** ソーシャルスコア降順・同点は新しい順（シグナルが無いパックでは従来の新着順に等しい） */
+function bySocialThenDate(a: PackArticle, b: PackArticle): number {
+    const d = socialScore(b) - socialScore(a)
+    return d !== 0 ? d : (b.collected_at || '').localeCompare(a.collected_at || '')
+}
+
+/**
  * フィード生成。
  * filterStrength S ∈ [0,1] はバブル外（発見）ゾーンの配分を制御する:
  *   バブル内 = ZONE_SIZE 件（関心ベクトルとの類似度順）
@@ -196,11 +213,9 @@ export function rankFeed(
     )
 
     if (!userVector) {
-        // 冷スタート: ジャンル均等に並べた最新記事をバブル外として表示
-        const byDate = candidates
-            .slice()
-            .sort((a, b) => (b.collected_at || '').localeCompare(a.collected_at || ''))
-        const balanced = interleaveByCategory(byDate, primaryCat).slice(0, OUT_MAX)
+        // 冷スタート: みんなが注目している記事をジャンル均等に（シグナルが無ければ新着順）
+        const ordered = candidates.slice().sort(bySocialThenDate)
+        const balanced = interleaveByCategory(ordered, primaryCat).slice(0, OUT_MAX)
         return { inBubble: [], outBubble: groupArticles(balanced.map(a => toArticle(a, 0, false))) }
     }
 
@@ -229,13 +244,14 @@ export function rankFeed(
         for (const r of g.related) usedIds.add(r.id)
     }
 
-    // --- バブル外: 低類似度を「ジャンル均等」に並べる（新しい順の偏りを解消）---
-    // 各カテゴリ内は新しい順、それをラウンドロビンで交互に取り出して全ジャンルを散らす。
+    // --- バブル外 = 世間の窓: 「自分以外の人がよく読み・反応している記事」を優先 ---
+    // 各カテゴリ内はソーシャルスコア順（無シグナル時は新着順に退化）、
+    // それをラウンドロビンで交互に取り出して全ジャンルを散らす。
     // 全件返し、レイアウト側が無限スクロールで少しずつ表示する。
-    const outByDate = scored
+    const outOrdered = scored
         .filter(s => s.sim < BUBBLE_THRESHOLD && !usedIds.has(s.a.id))
-        .sort((x, y) => (y.a.collected_at || '').localeCompare(x.a.collected_at || ''))
-    const outBalanced = interleaveByCategory(outByDate, s => primaryCat(s.a)).slice(0, OUT_MAX)
+        .sort((x, y) => bySocialThenDate(x.a, y.a))
+    const outBalanced = interleaveByCategory(outOrdered, s => primaryCat(s.a)).slice(0, OUT_MAX)
     const outBubble = groupArticles(outBalanced.map(s => toArticle(s.a, s.sim, false)))
 
     // outCount（=視野スライダー）は初期表示数の目安として返す（無限スクロールで増える）
@@ -261,9 +277,11 @@ export function filterArticles(
     if (opts.dateTo) {
         list = list.filter(a => (a.collected_at || '') <= `${opts.dateTo}T23:59:59+09:00`)
     }
-    const byDate = list.sort((a, b) => (b.collected_at || '').localeCompare(a.collected_at || ''))
-    // カテゴリ指定時はそのジャンルのみなので新しい順。未指定（冷スタート等）はジャンル均等に散らす。
-    const ordered = opts.category ? byDate : interleaveByCategory(byDate, primaryCat)
+    // カテゴリ指定時はそのジャンル内を新しい順（ブラウジング用）。
+    // 未指定（冷スタート等）は「みんなが注目している順」をジャンル均等に散らす。
+    const ordered = opts.category
+        ? list.sort((a, b) => (b.collected_at || '').localeCompare(a.collected_at || ''))
+        : interleaveByCategory(list.sort(bySocialThenDate), primaryCat)
     const sorted = ordered.slice(0, OUT_MAX).map(a => toArticle(a, 0, false))
     return groupArticles(sorted)
 }
