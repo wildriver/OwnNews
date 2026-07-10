@@ -11,6 +11,7 @@ import { DateFilterClient } from '@/components/date-filter-client'
 import { getAllInteractions } from '@/lib/client/store'
 import { computeHealthStats } from '@/lib/client/health-local'
 import { INTERACTION_EVENT } from '@/lib/client/interactions'
+import { SYNCED_EVENT } from '@/lib/client/sync'
 import { checkIsAdmin } from '@/lib/client/admin'
 
 const NAV_ITEMS = [
@@ -42,9 +43,13 @@ export function AppSidebar({ userEmail }: { userEmail: string }) {
         }
         load()
         window.addEventListener(INTERACTION_EVENT, load)
+        // ログイン直後はクラウド同期の完了前にmountするため、同期完了でも再計算する
+        // （これが無いと初回ログイン時に多様性スコアが0のまま表示される）
+        window.addEventListener(SYNCED_EVENT, load)
         return () => {
             cancelled = true
             window.removeEventListener(INTERACTION_EVENT, load)
+            window.removeEventListener(SYNCED_EVENT, load)
         }
     }, [])
 
