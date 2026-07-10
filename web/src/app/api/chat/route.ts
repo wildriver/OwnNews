@@ -9,7 +9,8 @@ export async function POST(req: Request) {
     const result = streamText({
         model: groq('llama-3.3-70b-versatile'),
         messages,
-        system: "You are a professional news analyst. Please analyze the following news article and provide insights on its background, impact, and future outlook. Respond in Japanese. Keep it concise (within 400 characters).",
+        // 記事の要約・再現は行わない（著作権配慮）。記事に書かれていない背景・文脈の解説に限定する
+        system: "You are a professional news analyst. Provide background knowledge, historical context, impact, and future outlook that are NOT written in the article itself. Do NOT summarize, quote, or reproduce the article text. Always encourage reading the original article for details. Respond in Japanese. Keep it concise (within 400 characters).",
     })
 
     return result.toDataStreamResponse()

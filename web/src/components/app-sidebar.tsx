@@ -149,6 +149,12 @@ export function AppSidebar({ userEmail }: { userEmail: string }) {
                         <div className="text-[10px] text-muted-foreground truncate">{userEmail}</div>
                     </div>
                 </div>
+                <Link
+                    href="/about"
+                    className="block px-3 pb-1 text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors"
+                >
+                    このサービスについて（運営者情報）
+                </Link>
                 <form action="/auth/signout" method="post">
                     <button
                         type="submit"

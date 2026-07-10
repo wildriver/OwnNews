@@ -302,7 +302,8 @@ async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket)
             id: a.id,
             title: a.title,
             link: a.link,
-            summary: stripHtml(a.summary || '').slice(0, 300),
+            // 公開パックに含める抜粋はごく短く（軽微利用）。解析用の内部利用とは別
+            summary: stripHtml(a.summary || '').slice(0, 120),
             published: a.published,
             category: a.category,
             category_medium: a.category_medium,
