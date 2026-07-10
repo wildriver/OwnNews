@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ArrowLeft, Database, Brain, Layers, EyeOff, HeartPulse, HardDrive } from 'lucide-react'
+import { ArchitectureDiagram } from '@/components/architecture-diagram'
 
 export const runtime = 'edge'
 
@@ -33,6 +34,19 @@ export default function AlgorithmPage() {
                         使っているアルゴリズムを<strong className="text-foreground">実装値そのままに</strong>公開します。
                     </p>
                 </div>
+
+                {/* 全体像 */}
+                <section className="space-y-3">
+                    <h2 className="text-lg font-bold">全体像</h2>
+                    <div className="bg-card border border-border rounded-xl p-4">
+                        <ArchitectureDiagram />
+                    </div>
+                    <p className="text-[13px] leading-relaxed text-muted-foreground">
+                        サーバー側の仕事は「全員に共通の記事データを準備して配る」ところまで。
+                        あなたの関心の学習と推薦の計算は、すべて<strong className="text-foreground">端末の中</strong>で行われます。
+                        アカウント保管庫に同期されるのは端末間で引き継ぐためのデータで、本人以外は読めません。
+                    </p>
+                </section>
 
                 {/* 1. 収集と解析 */}
                 <section className="space-y-3">
