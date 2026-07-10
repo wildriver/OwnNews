@@ -9,6 +9,7 @@ import { GroupedArticle } from '@/lib/types'
 import { recordInteraction } from '@/lib/client/interactions'
 import { InteractionType } from '@/lib/client/types'
 import { extractSourceName, stripHtml } from '@/lib/news'
+import { REACTION_EMOJI } from '@/lib/client/reactions'
 
 interface ArticleCardProps {
     article: GroupedArticle
@@ -183,6 +184,12 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
         </div>
     )
 
+    // みんなのリアクション（パック焼き込みの集計）: 上位2種を絵文字+件数で表示
+    const reacts = (article as unknown as { reactions?: Record<string, number> }).reactions
+    const topReacts = reacts
+        ? Object.entries(reacts).sort((a, b) => b[1] - a[1]).slice(0, 2)
+        : []
+
     const metaBottom = (
         <div className="flex items-center gap-2 text-muted-foreground min-w-0" style={{ fontSize: 'var(--fs-meta)' }}>
             <span className="truncate font-medium">{source}</span>
@@ -193,6 +200,11 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
                     {n.label}
                 </span>
             ))}
+            {topReacts.length > 0 && (
+                <span className="shrink-0 ml-auto tnum" title="みんなのリアクション">
+                    {topReacts.map(([k, n]) => `${REACTION_EMOJI[k] ?? ''}${n}`).join(' ')}
+                </span>
+            )}
         </div>
     )
 
