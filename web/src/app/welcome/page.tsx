@@ -207,6 +207,7 @@ export default async function WelcomePage() {
                     <span>
                         OwnNews — 情報的健康を保つニュースリーダー（研究プロジェクト）
                         <a href="/about" className="ml-2 underline hover:text-foreground">運営者情報</a>
+                        <a href="/algorithm" className="ml-2 underline hover:text-foreground">アルゴリズムの開示</a>
                     </span>
                     <span>
                         ニュース収集にご協力いただいています:{' '}

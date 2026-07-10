@@ -59,6 +59,11 @@ export default function AboutPage() {
                         <li>
                             各記事の著作権は、それぞれの報道機関・配信元に帰属します。
                         </li>
+                        <li>
+                            推薦・学習に使っているアルゴリズムは
+                            <Link href="/algorithm" className="text-primary hover:underline">「アルゴリズムの開示」</Link>
+                            で実装値そのままに公開しています。
+                        </li>
                     </ul>
                 </section>
 
