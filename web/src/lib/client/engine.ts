@@ -98,6 +98,7 @@ export function normalize(v: number[]): number[] {
 const LEARNING_RATE: Record<string, number> = {
     view: 0,          // クリックしただけでは学習しない（dwellで反映）
     deep_dive: 0.25,
+    bookmark: 0.15,   // ストック=後で読みたい・取っておきたい（明確な興味）
 }
 const NEGATIVE_RATE = 0.15  // 興味なし
 
@@ -133,7 +134,7 @@ export function engagementAlpha(dwellSec: number, scrollDepth: number): number {
 export function updateVector(
     current: number[] | null,
     embB64: string,
-    type: 'view' | 'deep_dive' | 'not_interested'
+    type: 'view' | 'deep_dive' | 'not_interested' | 'bookmark'
 ): number[] | null {
     const e = decodeEmb(embB64)
     if (!current || current.length === 0) {

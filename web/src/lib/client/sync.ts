@@ -207,6 +207,17 @@ async function pushUnsyncedInteractions(): Promise<void> {
     if (!error) await markInteractionsSynced(unsynced.map(i => [i.article_id, i.type]))
 }
 
+/** 操作1件をSupabaseから削除（ストック解除など）。fire-and-forget。 */
+export function deleteRemoteInteraction(articleId: string, type: InteractionType): void {
+    getUserEmail().then(email => {
+        if (!email) return
+        const supabase = createClient()
+        supabase.from('user_interactions').delete()
+            .eq('user_id', email).eq('article_id', articleId).eq('interaction_type', type)
+            .then(({ error }) => { if (error) console.warn('deleteRemoteInteraction failed:', error.message) })
+    })
+}
+
 /** 関心ベクトル更新をSupabaseへ（fire-and-forget）。 */
 export function pushVector(vector: number[], updatedAt: string): void {
     getUserEmail().then(email => {

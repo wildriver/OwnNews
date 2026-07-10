@@ -25,7 +25,7 @@ export interface PackArticle {
     reactions?: Record<string, number>
 }
 
-export type InteractionType = 'view' | 'deep_dive' | 'not_interested'
+export type InteractionType = 'view' | 'deep_dive' | 'not_interested' | 'bookmark'
 
 export interface LocalInteraction {
     article_id: string

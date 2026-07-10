@@ -6,9 +6,9 @@
 // (3) 運営Supabaseへバックグラウンド同期（ログイン時。端末間で共有）
 // (4) フィード再計算イベント発火
 
-import { putInteraction, getAllInteractions, getKV, setKV, getAllArticles } from './store'
+import { putInteraction, getAllInteractions, deleteInteractions, getKV, setKV, getAllArticles } from './store'
 import { updateVector, updateVectorWeighted, engagementAlpha } from './engine'
-import { pushInteraction, pushVector } from './sync'
+import { pushInteraction, pushVector, deleteRemoteInteraction } from './sync'
 import { InteractionType, LocalInteraction } from './types'
 
 export const INTERACTION_EVENT = 'ownnews:interaction'
@@ -63,6 +63,26 @@ export async function recordInteraction(articleId: string, type: InteractionType
         }))
     } catch (e) {
         console.error('recordInteraction failed:', e)
+    }
+}
+
+/** ストック済みか（ローカルキャッシュ基準。同期後は端末間でも一致する） */
+export async function isBookmarked(articleId: string): Promise<boolean> {
+    const all = await getAllInteractions()
+    return all.some(i => i.article_id === articleId && i.type === 'bookmark')
+}
+
+/**
+ * ストックのON/OFF。
+ * ON: 通常のinteractionとして記録（ベクトル学習・同期も通常経路）
+ * OFF: ローカルとサーバーの両方から行を削除（学習の巻き戻しはしない）
+ */
+export async function toggleBookmark(articleId: string, on: boolean): Promise<void> {
+    if (on) {
+        await recordInteraction(articleId, 'bookmark')
+    } else {
+        await deleteInteractions([[articleId, 'bookmark']])
+        deleteRemoteInteraction(articleId, 'bookmark')
     }
 }
 
