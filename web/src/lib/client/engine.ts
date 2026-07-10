@@ -15,6 +15,37 @@ export const ZONE_SIZE = 15
 export const GROUPING_THRESHOLD = 0.88
 /** クラスタリング対象の上限（性能のため候補を絞る） */
 const CLUSTER_WINDOW = 60
+/** バブル外（発見）に流し込む最大件数。無限スクロールで辿れる上限 */
+const OUT_MAX = 300
+
+/** 記事の主カテゴリ（「その他」以外の先頭。無ければ先頭 or その他） */
+function primaryCat(a: PackArticle): string {
+    const cats = (a.category || '').split(',').map(c => c.trim()).filter(Boolean)
+    return cats.find(c => c !== 'その他') || cats[0] || 'その他'
+}
+
+/**
+ * カテゴリごとに分けてラウンドロビンで交互に取り出す（ジャンルを均等に散らす）。
+ * CEEK等のRSSは定期発行で同時刻の記事が固まるため、新しい順だと単一ジャンルに偏る。
+ * これを各ジャンルから1件ずつ回して防ぐ。各バケット内の並びは呼び出し側で決める。
+ */
+function interleaveByCategory<T>(items: T[], catOf: (t: T) => string): T[] {
+    const buckets = new Map<string, T[]>()
+    for (const it of items) {
+        const c = catOf(it)
+        const b = buckets.get(c)
+        if (b) b.push(it); else buckets.set(c, [it])
+    }
+    const lists = [...buckets.values()]
+    const out: T[] = []
+    for (let i = 0, added = true; added; i++) {
+        added = false
+        for (const list of lists) {
+            if (i < list.length) { out.push(list[i]); added = true }
+        }
+    }
+    return out
+}
 
 // ---- 埋め込みデコード ----
 
@@ -165,12 +196,12 @@ export function rankFeed(
     )
 
     if (!userVector) {
-        // 冷スタート: 最新記事をバブル外として表示
-        const latest = candidates
+        // 冷スタート: ジャンル均等に並べた最新記事をバブル外として表示
+        const byDate = candidates
+            .slice()
             .sort((a, b) => (b.collected_at || '').localeCompare(a.collected_at || ''))
-            .slice(0, ZONE_SIZE * 2)
-            .map(a => toArticle(a, 0, false))
-        return { inBubble: [], outBubble: groupArticles(latest) }
+        const balanced = interleaveByCategory(byDate, primaryCat).slice(0, OUT_MAX)
+        return { inBubble: [], outBubble: groupArticles(balanced.map(a => toArticle(a, 0, false))) }
     }
 
     // 全候補の類似度を計算（1000件×1024次元でも数十ms）
@@ -198,17 +229,17 @@ export function rankFeed(
         for (const r of g.related) usedIds.add(r.id)
     }
 
-    // --- バブル外: 低類似度を新しさ優先でクラスタリング ---
-    const outWindow = scored
+    // --- バブル外: 低類似度を「ジャンル均等」に並べる（新しい順の偏りを解消）---
+    // 各カテゴリ内は新しい順、それをラウンドロビンで交互に取り出して全ジャンルを散らす。
+    // 全件返し、レイアウト側が無限スクロールで少しずつ表示する。
+    const outByDate = scored
         .filter(s => s.sim < BUBBLE_THRESHOLD && !usedIds.has(s.a.id))
-        .sort((x, y) => {
-            const d = (y.a.collected_at || '').localeCompare(x.a.collected_at || '')
-            return d !== 0 ? d : x.sim - y.sim
-        })
-        .slice(0, CLUSTER_WINDOW)
-    const outGrouped = groupArticles(outWindow.map(s => toArticle(s.a, s.sim, false)))
-    const outBubble = outGrouped.slice(0, outCount)
+        .sort((x, y) => (y.a.collected_at || '').localeCompare(x.a.collected_at || ''))
+    const outBalanced = interleaveByCategory(outByDate, s => primaryCat(s.a)).slice(0, OUT_MAX)
+    const outBubble = groupArticles(outBalanced.map(s => toArticle(s.a, s.sim, false)))
 
+    // outCount（=視野スライダー）は初期表示数の目安として返す（無限スクロールで増える）
+    void outCount
     return { inBubble, outBubble }
 }
 
@@ -230,10 +261,10 @@ export function filterArticles(
     if (opts.dateTo) {
         list = list.filter(a => (a.collected_at || '') <= `${opts.dateTo}T23:59:59+09:00`)
     }
-    const sorted = list
-        .sort((a, b) => (b.collected_at || '').localeCompare(a.collected_at || ''))
-        .slice(0, 60)
-        .map(a => toArticle(a, 0, false))
+    const byDate = list.sort((a, b) => (b.collected_at || '').localeCompare(a.collected_at || ''))
+    // カテゴリ指定時はそのジャンルのみなので新しい順。未指定（冷スタート等）はジャンル均等に散らす。
+    const ordered = opts.category ? byDate : interleaveByCategory(byDate, primaryCat)
+    const sorted = ordered.slice(0, OUT_MAX).map(a => toArticle(a, 0, false))
     return groupArticles(sorted)
 }
 

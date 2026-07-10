@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { X } from 'lucide-react'
 import { GroupedArticle } from '@/lib/types'
 
-const PAGE_SIZE = 24
+const PAGE_SIZE = 24     // リストモードの1ページ
+const OUT_PAGE = 12      // バブル外の追加読み込み単位
 
 interface BubbleFeedLayoutProps {
   inBubbleArticles: GroupedArticle[]
@@ -30,34 +31,42 @@ export function BubbleFeedLayout({
   selectedCategory,
 }: BubbleFeedLayoutProps) {
   const router = useRouter()
+  const onCategoryClick = (cat: string) => router.push(`/?category=${encodeURIComponent(cat)}`)
+
+  // ---- リストモード（カテゴリ/日付フィルタ・冷スタート）の無限スクロール ----
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const loaderRef = useRef<HTMLDivElement>(null)
-
-  // フィルタ条件が変わったらページングをリセット
   useEffect(() => { setVisibleCount(PAGE_SIZE) }, [fallbackArticles])
-
-  const visibleFallback = useMemo(
-    () => fallbackArticles.slice(0, visibleCount),
-    [fallbackArticles, visibleCount]
-  )
-  const hasMore = visibleCount < fallbackArticles.length
-
+  const visibleFallback = useMemo(() => fallbackArticles.slice(0, visibleCount), [fallbackArticles, visibleCount])
   useEffect(() => {
     const el = loaderRef.current
     if (!el) return
-    const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0].isIntersecting) {
-          setVisibleCount(c => Math.min(c + PAGE_SIZE, fallbackArticles.length))
-        }
-      },
-      { rootMargin: '400px' }
+    const ob = new IntersectionObserver(
+      e => { if (e[0].isIntersecting) setVisibleCount(c => Math.min(c + PAGE_SIZE, fallbackArticles.length)) },
+      { rootMargin: '600px' }
     )
-    observer.observe(el)
-    return () => observer.disconnect()
+    ob.observe(el)
+    return () => ob.disconnect()
   }, [fallbackArticles.length])
 
-  const onCategoryClick = (cat: string) => router.push(`/?category=${encodeURIComponent(cat)}`)
+  // ---- バブル外ゾーンの無限スクロール ----
+  // 初期表示数は「視野の広さ」スライダー由来。以降スクロールで増える。
+  const outInitial = Math.max(6, Math.round(OUT_PAGE * 2 * filterStrength))
+  const [outVisible, setOutVisible] = useState(outInitial)
+  const outLoaderRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { setOutVisible(outInitial) }, [outBubbleArticles, outInitial])
+  const visibleOut = useMemo(() => outBubbleArticles.slice(0, outVisible), [outBubbleArticles, outVisible])
+  const outHasMore = outVisible < outBubbleArticles.length
+  useEffect(() => {
+    const el = outLoaderRef.current
+    if (!el) return
+    const ob = new IntersectionObserver(
+      e => { if (e[0].isIntersecting) setOutVisible(c => Math.min(c + OUT_PAGE, outBubbleArticles.length)) },
+      { rootMargin: '600px' }
+    )
+    ob.observe(el)
+    return () => ob.disconnect()
+  }, [outBubbleArticles.length])
 
   // ---- バブルモード ----
   if (bubbleMode === 'vector') {
@@ -70,7 +79,7 @@ export function BubbleFeedLayout({
             <h2 className="text-[13px] font-bold">あなたのバブル</h2>
             <span className="text-[11px] text-muted-foreground tnum">{inBubbleArticles.length}件</span>
             <span className="text-[10px] text-muted-foreground/70 ml-auto hidden sm:block">
-              関心ベクトルとの類似度で選出
+              あなたの関心に近い話題
             </span>
           </div>
 
@@ -83,25 +92,30 @@ export function BubbleFeedLayout({
           )}
         </section>
 
-        {/* バブル外ゾーン */}
+        {/* バブル外ゾーン（いろいろなジャンル・無限スクロール） */}
         <section>
           <div className="flex items-baseline gap-2 mb-2 px-0.5">
             <span className="w-2 h-2 rounded-full bg-amber-500 self-center" />
-            <h2 className="text-[13px] font-bold">バブルの外</h2>
+            <h2 className="text-[13px] font-bold">いろいろなニュース</h2>
             <span className="text-[11px] text-muted-foreground tnum">{outBubbleArticles.length}件</span>
             <span className="text-[10px] text-muted-foreground/70 ml-auto hidden sm:block">
-              普段読まない話題 — 視野を広げる
+              バブルの外 — 全ジャンルから均等に
             </span>
           </div>
 
           {outBubbleArticles.length === 0 ? (
             <div className="text-center py-8 text-[12px] text-muted-foreground bg-card border border-dashed border-border rounded-xl">
-              {filterStrength === 0
-                ? '「視野の広さ」スライダーを右に動かすと、バブル外の記事が表示されます'
-                : 'バブル外の記事が見つかりませんでした'}
+              表示できる記事が見つかりませんでした
             </div>
           ) : (
-            <NewsGrid articles={outBubbleArticles} outsideBubble onCategoryClick={onCategoryClick} />
+            <>
+              <NewsGrid articles={visibleOut} outsideBubble onCategoryClick={onCategoryClick} withFeatured={false} />
+              <div ref={outLoaderRef} className="flex justify-center py-6">
+                {!outHasMore && (
+                  <p className="text-[11px] text-muted-foreground/60">― すべて表示しました ―</p>
+                )}
+              </div>
+            </>
           )}
         </section>
       </div>
@@ -131,7 +145,7 @@ export function BubbleFeedLayout({
       <NewsGrid articles={visibleFallback} onCategoryClick={onCategoryClick} />
 
       <div ref={loaderRef} className="flex justify-center py-8">
-        {!hasMore && visibleFallback.length > 0 && (
+        {visibleCount >= fallbackArticles.length && visibleFallback.length > 0 && (
           <p className="text-[11px] text-muted-foreground/60">― すべて表示しました ―</p>
         )}
       </div>
