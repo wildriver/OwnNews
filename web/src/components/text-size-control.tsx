@@ -10,9 +10,9 @@ import { useState, useEffect } from 'react'
 export type TextSize = 'normal' | 'large' | 'xlarge'
 const STORAGE_KEY = 'ownnews_textsize'
 const SIZES: { id: TextSize; label: string; a: string }[] = [
-    { id: 'normal', label: '標準', a: 'text-[13px]' },
-    { id: 'large', label: '大', a: 'text-[15px]' },
-    { id: 'xlarge', label: '特大', a: 'text-[18px]' },
+    { id: 'normal', label: '標準', a: 'text-[12px]' },
+    { id: 'large', label: '大', a: 'text-[16px]' },
+    { id: 'xlarge', label: '特大', a: 'text-[21px]' },
 ]
 
 export function applyTextSize(size: TextSize) {

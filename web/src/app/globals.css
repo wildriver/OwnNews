@@ -172,14 +172,14 @@
 /* 表示サイズ: 「大」「特大」で読みテキストの変数を上書きする。
    幅は変わらないのでモバイルでも横スクロールしない。 */
 :root[data-textsize="large"] {
-  --fs-title: 15px;
-  --fs-title-lg: 17px;
-  --fs-body: 13.5px;
-  --fs-meta: 12px;
-}
-:root[data-textsize="xlarge"] {
   --fs-title: 17px;
   --fs-title-lg: 20px;
   --fs-body: 15px;
   --fs-meta: 13px;
+}
+:root[data-textsize="xlarge"] {
+  --fs-title: 22px;
+  --fs-title-lg: 26px;
+  --fs-body: 19px;
+  --fs-meta: 16px;
 }
