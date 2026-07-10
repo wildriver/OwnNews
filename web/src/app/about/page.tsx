@@ -29,7 +29,7 @@ export default function AboutPage() {
                     <h2 className="text-lg font-bold flex items-center gap-2">
                         <FlaskConical className="w-5 h-5 text-primary" />研究プロジェクトとしての運営
                     </h2>
-                    <p className="text-[14px] leading-relaxed text-muted-foreground">
+                    <p className="text-[15.5px] leading-relaxed text-muted-foreground">
                         OwnNewsは、フィルターバブルの可視化と「情報的健康」の実現をテーマとする
                         <strong className="text-foreground">大学研究室による研究プロジェクト</strong>として運営されています。
                         推薦アルゴリズムをユーザーの側に置き、情報摂取のバランスを本人が把握・制御できる
@@ -41,7 +41,7 @@ export default function AboutPage() {
                     <h2 className="text-lg font-bold flex items-center gap-2">
                         <Scale className="w-5 h-5 text-primary" />コンテンツの取り扱い
                     </h2>
-                    <ul className="text-[14px] leading-relaxed text-muted-foreground space-y-2 list-disc pl-5">
+                    <ul className="text-[15.5px] leading-relaxed text-muted-foreground space-y-2 list-disc pl-5">
                         <li>
                             本サービスは、ニュース記事の<strong className="text-foreground">所在検索・情報解析サービス</strong>
                             （著作権法第47条の5）として、記事の「見出し・媒体名・日付・ごく短い抜粋・小さなサムネイル」を
@@ -66,7 +66,7 @@ export default function AboutPage() {
                     <h2 className="text-lg font-bold flex items-center gap-2">
                         <ShieldCheck className="w-5 h-5 text-primary" />報道機関・権利者の方へ
                     </h2>
-                    <p className="text-[14px] leading-relaxed text-muted-foreground">
+                    <p className="text-[15.5px] leading-relaxed text-muted-foreground">
                         掲載内容についてのご意見、掲載停止・削除のご依頼は、下記の連絡先までお知らせください。
                         確認のうえ、速やかに対応いたします。
                     </p>
@@ -76,7 +76,7 @@ export default function AboutPage() {
                     <h2 className="text-lg font-bold flex items-center gap-2">
                         <Mail className="w-5 h-5 text-primary" />運営者・お問い合わせ
                     </h2>
-                    <div className="bg-card border border-border rounded-xl p-5 text-[14px] leading-relaxed">
+                    <div className="bg-card border border-border rounded-xl p-5 text-[15.5px] leading-relaxed">
                         <p className="text-muted-foreground">運営: 荒川研究室（研究プロジェクト）</p>
                         <p className="text-muted-foreground">
                             連絡先: <a href="mailto:yutaka@arakawa-lab.com" className="text-primary hover:underline">yutaka@arakawa-lab.com</a>
