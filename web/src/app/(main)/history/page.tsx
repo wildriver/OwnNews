@@ -152,6 +152,7 @@ export default function HistoryPage() {
     // タイトル未取得（Phase1以前の古い履歴）は表示しない。実データはSQL整理＋同期で削除される。
     const withTitle = interactions.filter(i => (i.title || '').trim() !== '')
     const viewed = withTitle.filter(i => i.type === 'view' || i.type === 'deep_dive')
+    const stocked = withTitle.filter(i => i.type === 'bookmark')
     const excluded = withTitle.filter(i => i.type === 'not_interested')
 
     return (
@@ -165,9 +166,12 @@ export default function HistoryPage() {
                 </header>
 
                 <Tabs defaultValue="viewed" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 bg-card p-1 mb-4">
+                    <TabsList className="grid w-full grid-cols-3 bg-card p-1 mb-4">
                         <TabsTrigger value="viewed" className="data-[state=active]:bg-accent data-[state=active]:text-primary">
                             閲覧履歴（{viewed.length}）
+                        </TabsTrigger>
+                        <TabsTrigger value="stocked" className="data-[state=active]:bg-accent data-[state=active]:text-primary">
+                            ストック（{stocked.length}）
                         </TabsTrigger>
                         <TabsTrigger value="excluded" className="data-[state=active]:bg-red-50 data-[state=active]:text-red-600">
                             非表示リスト（{excluded.length}）
@@ -176,6 +180,9 @@ export default function HistoryPage() {
 
                     <TabsContent value="viewed">
                         <PaginatedList items={viewed} />
+                    </TabsContent>
+                    <TabsContent value="stocked">
+                        <PaginatedList items={stocked} />
                     </TabsContent>
                     <TabsContent value="excluded">
                         <PaginatedList items={excluded} />

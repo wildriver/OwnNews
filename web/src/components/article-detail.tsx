@@ -15,6 +15,7 @@ import { ClientNutrientRadar } from '@/components/client-nutrient-radar'
 import { DeepDiveDialog } from '@/components/deep-dive-dialog'
 import { DiscussionPanel } from '@/components/discussion-panel'
 import { ReactionBar } from '@/components/reaction-bar'
+import { BookmarkButton } from '@/components/bookmark-button'
 import { getAllArticles } from '@/lib/client/store'
 import { PackArticle } from '@/lib/client/types'
 import { decodeEmb, cosine, GROUPING_THRESHOLD } from '@/lib/client/engine'
@@ -188,17 +189,22 @@ export function ArticleDetail({ id }: { id: string }) {
 
     return (
         <div className="min-h-screen bg-background text-foreground py-8 px-4">
-            <div className="max-w-3xl mx-auto">
-                <header className="mb-6">
+            <div className="max-w-3xl lg:max-w-6xl mx-auto">
+                <header className="mb-6 flex items-center justify-between gap-3">
                     <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground pl-0">
                         <Link href="/">
                             <ArrowLeft className="w-4 h-4 mr-2" />
                             一覧に戻る
                         </Link>
                     </Button>
+                    <BookmarkButton articleId={article.id} />
                 </header>
 
                 <article className="space-y-8">
+                    {/* 横長画面では2カラム: 左=本文と反応 / 右=栄養素とみんなの反応 */}
+                    <div className="space-y-8 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-6 lg:items-start">
+                        <div className="space-y-8 min-w-0">
+
                     <div className="space-y-4">
                         <div className="flex flex-wrap gap-2">
                             {categories.map((cat) => (
@@ -249,6 +255,20 @@ export function ArticleDetail({ id }: { id: string }) {
                         </p>
                     </div>
 
+                    {/* この記事への反応（1タップの主観表明）— 栄養素より先に */}
+                    <ReactionBar articleId={article.id} />
+
+                    <div className="flex justify-center pt-4">
+                        <Button variant="outline" size="lg" asChild className="bg-accent border-primary/25 text-primary hover:bg-accent hover:text-accent-foreground gap-2 w-full max-w-sm">
+                            <a href={article.link} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="w-5 h-5" />
+                                元の記事を読む（{sourceOf(article)}）
+                            </a>
+                        </Button>
+                    </div>
+                        </div>
+
+                        <aside className="space-y-6 min-w-0">
                     {/* 栄養素 */}
                     <div className="bg-card border border-border rounded-xl p-6">
                         <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
@@ -277,20 +297,10 @@ export function ArticleDetail({ id }: { id: string }) {
                         )}
                     </div>
 
-                    <div className="flex justify-center pt-4">
-                        <Button variant="outline" size="lg" asChild className="bg-accent border-primary/25 text-primary hover:bg-accent hover:text-accent-foreground gap-2 w-full max-w-sm">
-                            <a href={article.link} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="w-5 h-5" />
-                                元の記事を読む（{sourceOf(article)}）
-                            </a>
-                        </Button>
-                    </div>
-
-                    {/* この記事への反応（1タップの主観表明） */}
-                    <ReactionBar articleId={article.id} />
-
                     {/* みんなの反応（X連携＋はてブコメント） */}
                     <DiscussionPanel title={article.title} link={article.link} />
+                        </aside>
+                    </div>
 
                     {/* 別の視点で読む（同一トピック） */}
                     {sameGroup.length > 0 && (
