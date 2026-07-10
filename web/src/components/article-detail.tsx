@@ -189,7 +189,7 @@ export function ArticleDetail({ id }: { id: string }) {
 
     return (
         <div className="min-h-screen bg-background text-foreground py-8 px-4">
-            <div className="max-w-3xl lg:max-w-6xl mx-auto">
+            <div className="max-w-3xl xl:max-w-6xl mx-auto">
                 <header className="mb-6 flex items-center justify-between gap-3">
                     <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground pl-0">
                         <Link href="/">
@@ -202,7 +202,7 @@ export function ArticleDetail({ id }: { id: string }) {
 
                 <article className="space-y-8">
                     {/* 横長画面では2カラム: 左=本文と反応 / 右=栄養素とみんなの反応 */}
-                    <div className="space-y-8 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-6 lg:items-start">
+                    <div className="space-y-8 xl:space-y-0 xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-6 xl:items-start">
                         <div className="space-y-8 min-w-0">
 
                     <div className="space-y-4">
