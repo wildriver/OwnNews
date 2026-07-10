@@ -9,7 +9,7 @@ export const runtime = 'edge'
 export const metadata = {
     title: 'OwnNews — 情報的健康を保つニュースリーダー',
     description:
-        'ニュースを食事のように。推薦エンジンはあなたの端末で動き、嗜好データはあなたに帰属。推薦の強度を自分で調整でき、情報摂取の栄養バランスを可視化するニュースリーダー。ニュースソースはCEEK.JP NEWS。',
+        'ニュースを食事のように。推薦エンジンはあなたの端末で動き、嗜好データはあなたに帰属。推薦の強度を自分で調整でき、情報摂取の栄養バランスを可視化するニュースリーダー。記事収集にはCEEK.JP NEWSにご協力いただいています。',
 }
 
 // 未ログイン時のトップページ（ランディング）。ログイン済みならフィードへ。
@@ -39,9 +39,6 @@ export default async function WelcomePage() {
             <main>
                 {/* ヒーロー */}
                 <section className="max-w-5xl mx-auto px-5 pt-14 pb-10 text-center">
-                    <p className="inline-block text-[11px] font-medium text-primary bg-accent rounded-full px-3 py-1 mb-5">
-                        ニュースソース: CEEK.JP NEWS
-                    </p>
                     <h1 className="text-3xl sm:text-5xl font-bold tracking-tight leading-tight">
                         ニュースを、<span className="text-primary">食事</span>のように。
                     </h1>
@@ -167,9 +164,10 @@ export default async function WelcomePage() {
                 {/* ニュースソース */}
                 <section className="border-t border-border bg-card/50">
                     <div className="max-w-3xl mx-auto px-5 py-12">
-                        <h2 className="text-lg font-bold tracking-tight">ニュースソースについて</h2>
+                        <h2 className="text-lg font-bold tracking-tight">ニュースの収集について</h2>
                         <p className="mt-3 text-[13px] text-muted-foreground leading-relaxed">
-                            記事は{' '}
+                            記事の収集にあたっては、国内の報道各社のニュースを横断的にまとめる
+                            ニュース検索サイト{' '}
                             <a
                                 href="https://news.ceek.jp/"
                                 target="_blank"
@@ -178,9 +176,8 @@ export default async function WelcomePage() {
                             >
                                 CEEK.JP NEWS<ExternalLink className="w-3 h-3" />
                             </a>{' '}
-                            から収集しています。CEEK.JP NEWSは国内の報道各社のニュースを横断的にまとめる
-                            ニュース検索サイトで、政治・経済・国際・社会からスポーツ・IT・サイエンスまで
-                            幅広いジャンルを収集対象としています。OwnNewsは見出しと概要を整理して表示し、
+                            にご協力いただいています。政治・経済・国際・社会からスポーツ・IT・サイエンスまで
+                            幅広いジャンルをカバーし、OwnNewsは見出しと概要を整理して表示、
                             記事本文は配信元のサイトで読む形式です。
                         </p>
                     </div>
@@ -208,7 +205,7 @@ export default async function WelcomePage() {
                 <div className="max-w-5xl mx-auto px-5 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-muted-foreground">
                     <span>OwnNews — 情報的健康を保つニュースリーダー</span>
                     <span>
-                        ニュースソース:{' '}
+                        ニュース収集にご協力いただいています:{' '}
                         <a href="https://news.ceek.jp/" target="_blank" rel="noopener noreferrer" className="hover:text-foreground underline">
                             CEEK.JP NEWS
                         </a>
