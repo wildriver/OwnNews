@@ -25,7 +25,7 @@ export default async function MainLayout({
         <div className="flex h-screen overflow-hidden bg-background text-foreground">
             <CloudSync />
             <AppSidebar userEmail={user.email ?? ''} />
-            <main className="flex-1 overflow-y-auto w-full pb-16 md:pb-0">
+            <main className="flex-1 overflow-y-auto w-full pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
                 {children}
             </main>
             <MobileNav />

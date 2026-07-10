@@ -19,6 +19,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: "#F7F7F5",
+  // iPhoneのホームインジケータ領域を検知するために必須（env(safe-area-inset-*)が有効になる）
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

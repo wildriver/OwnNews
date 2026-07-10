@@ -13,7 +13,7 @@ export function VersionBadge() {
     : `v${hash.slice(0, 7)}`
 
   return (
-    <div className="fixed bottom-2 right-3 z-50 pointer-events-none">
+    <div className="fixed bottom-2 right-3 z-50 pointer-events-none hidden md:block">
       <span className="text-[10px] text-muted-foreground/50 font-mono select-none">
         {label}
       </span>
