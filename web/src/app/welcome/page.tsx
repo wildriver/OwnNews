@@ -87,7 +87,8 @@ export default async function WelcomePage() {
                                 本人の見えないところで作られていきます。
                             </p>
                             <p>
-                                OwnNewsはこの構図を逆転させる実験です。
+                                OwnNewsは、大学研究室が「情報的健康」をテーマに運営する研究プロジェクトであり、
+                                この構図を逆転させる実験です。
                                 <strong className="text-foreground">推薦エンジンをユーザーの側に移す</strong>。
                                 嗜好の学習も推薦の計算も、あなたのブラウザの中で動きます。
                                 閲覧履歴や関心データはあなた個人のアカウントに帰属し、いつでも自分で確認できます。
@@ -203,7 +204,10 @@ export default async function WelcomePage() {
             {/* フッター */}
             <footer className="border-t border-border">
                 <div className="max-w-5xl mx-auto px-5 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                    <span>OwnNews — 情報的健康を保つニュースリーダー</span>
+                    <span>
+                        OwnNews — 情報的健康を保つニュースリーダー（研究プロジェクト）
+                        <a href="/about" className="ml-2 underline hover:text-foreground">運営者情報</a>
+                    </span>
                     <span>
                         ニュース収集にご協力いただいています:{' '}
                         <a href="https://news.ceek.jp/" target="_blank" rel="noopener noreferrer" className="hover:text-foreground underline">

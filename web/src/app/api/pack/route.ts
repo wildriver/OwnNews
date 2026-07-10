@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
             id: a.id,
             title: a.title,
             link: a.link,
-            summary: stripHtml(a.summary || '').slice(0, 300),
+            summary: stripHtml(a.summary || '').slice(0, 120),
             published: a.published,
             category: a.category,
             category_medium: a.category_medium,

@@ -51,6 +51,9 @@ export function DeepDiveDialog({ article, trigger }: { article: Article, trigger
                     <DialogDescription className="text-muted-foreground">
                         {article.title}
                     </DialogDescription>
+                    <p className="text-[11px] text-muted-foreground/80">
+                        AIによる背景・文脈の解説です（記事本文の要約・転載ではありません）。詳細は元記事をお読みください。
+                    </p>
                 </DialogHeader>
 
                 <ScrollArea className="h-[400px] mt-4 rounded-md border border-border bg-card p-4">

@@ -242,16 +242,27 @@ export function ArticleDetail({ id }: { id: string }) {
                         )}
                     </div>
 
+                    {/* 画像は「確認できる程度」の小さめサムネイルに留める（軽微利用）。
+                        クロップせず(object-contain)、出典を明記する。 */}
                     {article.image_url && (
-                        <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-border shadow-sm bg-card">
-                            <SafeImage src={article.image_url} alt={article.title} className="w-full h-full object-cover" />
-                        </div>
+                        <figure className="w-full max-w-sm">
+                            <div className="relative h-40 sm:h-44 overflow-hidden rounded-xl border border-border bg-secondary/40">
+                                <SafeImage src={article.image_url} alt={article.title} className="w-full h-full object-contain" />
+                            </div>
+                            <figcaption className="mt-1 text-[10px] text-muted-foreground">
+                                画像: 配信元（{sourceOf(article)}）
+                            </figcaption>
+                        </figure>
                     )}
 
+                    {/* 概要はごく短い抜粋（スニペット）に留め、本文は配信元へ誘導する */}
                     <div className="bg-card border border-border rounded-xl p-6 md:p-8">
                         <h2 className="text-xl font-bold text-foreground mb-4">概要</h2>
                         <p className="text-zinc-700 leading-relaxed text-lg whitespace-pre-wrap">
-                            {stripHtml(article.summary)}
+                            {stripHtml(article.summary).slice(0, 120)}…
+                        </p>
+                        <p className="mt-3 text-[12px] text-muted-foreground">
+                            続きは配信元（{sourceOf(article)}）の元記事でお読みください。
                         </p>
                     </div>
 
