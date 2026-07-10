@@ -42,7 +42,7 @@ export default async function WelcomePage() {
                     <h1 className="text-3xl sm:text-5xl font-bold tracking-tight leading-tight">
                         ニュースを、<span className="text-primary">食事</span>のように。
                     </h1>
-                    <p className="mt-5 text-[14px] sm:text-base text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+                    <p className="mt-5 text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
                         OwnNewsは「情報的健康」を保つためのニュースリーダーです。
                         あなたが何をどれだけ読んでいるかを栄養バランスとして可視化し、
                         推薦アルゴリズムの主導権をプラットフォームからあなたの手に取り戻します。
@@ -50,7 +50,7 @@ export default async function WelcomePage() {
                     <div className="mt-7 flex items-center justify-center gap-3">
                         <Link
                             href="/login"
-                            className="inline-flex items-center gap-2 text-[14px] font-semibold bg-primary text-primary-foreground rounded-xl px-6 py-3 hover:opacity-90 transition-opacity shadow-sm"
+                            className="inline-flex items-center gap-2 text-[15px] font-semibold bg-primary text-primary-foreground rounded-xl px-6 py-3 hover:opacity-90 transition-opacity shadow-sm"
                         >
                             無料で始める <ArrowRight className="w-4 h-4" />
                         </Link>
@@ -68,7 +68,7 @@ export default async function WelcomePage() {
                                 className="w-full h-auto"
                             />
                         </div>
-                        <p className="mt-3 text-[11px] text-muted-foreground">
+                        <p className="mt-3 text-[12px] text-muted-foreground">
                             実際のフィード画面 — 「あなたのバブル」と「バブルの外」を常に並べて表示
                         </p>
                     </div>
@@ -78,7 +78,7 @@ export default async function WelcomePage() {
                 <section className="border-y border-border bg-card/50">
                     <div className="max-w-3xl mx-auto px-5 py-14">
                         <h2 className="text-xl sm:text-2xl font-bold tracking-tight">なぜOwnNewsを作ったのか</h2>
-                        <div className="mt-5 space-y-4 text-[14px] leading-relaxed text-muted-foreground">
+                        <div className="mt-5 space-y-4 text-[15.5px] sm:text-base leading-relaxed text-muted-foreground">
                             <p>
                                 ふつうのニュースアプリでは、推薦アルゴリズムはプラットフォームの側にあります。
                                 あなたの閲覧履歴はプラットフォームのものになり、何がどんな理由で表示されているのかを、
@@ -110,8 +110,8 @@ export default async function WelcomePage() {
                     <div className="mt-8 grid sm:grid-cols-2 gap-4">
                         <div className="bg-card border border-border rounded-2xl p-5">
                             <UserCheck className="w-6 h-6 text-primary" />
-                            <h3 className="mt-3 text-[15px] font-bold">嗜好データはあなたに帰属</h3>
-                            <p className="mt-1.5 text-[13px] text-muted-foreground leading-relaxed">
+                            <h3 className="mt-3 text-[17px] font-bold">嗜好データはあなたに帰属</h3>
+                            <p className="mt-1.5 text-[15px] text-muted-foreground leading-relaxed">
                                 推薦エンジンはあなたの端末（ブラウザ内）で動作。何を読んだか・何に関心があるかは
                                 あなたのアカウントのものとして扱われ、履歴ページでいつでも確認・削除できます。
                                 運営側が個人の嗜好を使って表示を操作することはありません。
@@ -119,16 +119,16 @@ export default async function WelcomePage() {
                         </div>
                         <div className="bg-card border border-border rounded-2xl p-5">
                             <SlidersHorizontal className="w-6 h-6 text-primary" />
-                            <h3 className="mt-3 text-[15px] font-bold">推薦の強度を自分で変えられる</h3>
-                            <p className="mt-1.5 text-[13px] text-muted-foreground leading-relaxed">
+                            <h3 className="mt-3 text-[17px] font-bold">推薦の強度を自分で変えられる</h3>
+                            <p className="mt-1.5 text-[15px] text-muted-foreground leading-relaxed">
                                 「視野の広さ」スライダーで、自分のバブルに浸るか、視野を広げるかをその場で調整。
                                 プラットフォームに最適化を委ねるのではなく、アルゴリズムのつまみがあなたの手元にあります。
                             </p>
                         </div>
                         <div className="bg-card border border-border rounded-2xl p-5">
                             <Salad className="w-6 h-6 text-primary" />
-                            <h3 className="mt-3 text-[15px] font-bold">情報の栄養バランスを可視化</h3>
-                            <p className="mt-1.5 text-[13px] text-muted-foreground leading-relaxed">
+                            <h3 className="mt-3 text-[17px] font-bold">情報の栄養バランスを可視化</h3>
+                            <p className="mt-1.5 text-[15px] text-muted-foreground leading-relaxed">
                                 すべての記事に「栄養素」（事実性・感情度・文脈・即時性）をAIが付与。
                                 ダッシュボードで摂取バランス・多様性スコア・足りないジャンルが一目で分かり、
                                 偏りがあれば教えてくれます。
@@ -136,8 +136,8 @@ export default async function WelcomePage() {
                         </div>
                         <div className="bg-card border border-border rounded-2xl p-5">
                             <Scale className="w-6 h-6 text-primary" />
-                            <h3 className="mt-3 text-[15px] font-bold">バブルの外が、常に見える</h3>
-                            <p className="mt-1.5 text-[13px] text-muted-foreground leading-relaxed">
+                            <h3 className="mt-3 text-[17px] font-bold">バブルの外が、常に見える</h3>
+                            <p className="mt-1.5 text-[15px] text-muted-foreground leading-relaxed">
                                 フィードは「あなたのバブル」と「バブルの外」の2ゾーン構成。
                                 バブルの外は全ジャンルから均等に選ばれ、関心の外側にある世界が
                                 自然と目に入る設計です。
@@ -156,7 +156,7 @@ export default async function WelcomePage() {
                                 className="w-full h-auto"
                             />
                         </div>
-                        <p className="mt-3 text-[11px] text-muted-foreground">
+                        <p className="mt-3 text-[12px] text-muted-foreground">
                             実際のダッシュボード — 情報摂取のバランスを食事のようにチェック
                         </p>
                     </div>
@@ -166,7 +166,7 @@ export default async function WelcomePage() {
                 <section className="border-t border-border bg-card/50">
                     <div className="max-w-3xl mx-auto px-5 py-12">
                         <h2 className="text-lg font-bold tracking-tight">ニュースの収集について</h2>
-                        <p className="mt-3 text-[13px] text-muted-foreground leading-relaxed">
+                        <p className="mt-3 text-[15px] text-muted-foreground leading-relaxed">
                             記事の収集にあたっては、国内の報道各社のニュースを横断的にまとめる
                             ニュース検索サイト{' '}
                             <a
@@ -189,12 +189,12 @@ export default async function WelcomePage() {
                     <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
                         今日から、情報の食生活を整える。
                     </h2>
-                    <p className="mt-3 text-[13px] text-muted-foreground">
+                    <p className="mt-3 text-[15px] text-muted-foreground">
                         Googleアカウントでログインするだけ。閲覧するほど、あなたのバブルの形が見えてきます。
                     </p>
                     <Link
                         href="/login"
-                        className="mt-6 inline-flex items-center gap-2 text-[14px] font-semibold bg-primary text-primary-foreground rounded-xl px-6 py-3 hover:opacity-90 transition-opacity shadow-sm"
+                        className="mt-6 inline-flex items-center gap-2 text-[15px] font-semibold bg-primary text-primary-foreground rounded-xl px-6 py-3 hover:opacity-90 transition-opacity shadow-sm"
                     >
                         無料で始める <ArrowRight className="w-4 h-4" />
                     </Link>
@@ -203,7 +203,7 @@ export default async function WelcomePage() {
 
             {/* フッター */}
             <footer className="border-t border-border">
-                <div className="max-w-5xl mx-auto px-5 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <div className="max-w-5xl mx-auto px-5 py-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[12px] text-muted-foreground">
                     <span>
                         OwnNews — 情報的健康を保つニュースリーダー（研究プロジェクト）
                         <a href="/about" className="ml-2 underline hover:text-foreground">運営者情報</a>
