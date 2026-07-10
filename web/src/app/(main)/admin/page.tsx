@@ -5,9 +5,10 @@
 // データは認証済み匿名キー経由の集計RPC（is_admin()ガード）から取得。
 // 管理者以外がURLを直接開いてもRPCが弾くため、何も表示されない。
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Users, Eye, Sparkles, EyeOff, BellRing, Gauge, ShieldAlert } from 'lucide-react'
 import { fetchAdminData, AdminData } from '@/lib/client/admin'
+import { deriveBubbleProfiles, BubbleHeatmap, DiversityScatter, RadarGrid } from '@/components/admin-bubble-viz'
 
 // ジャンル配色（既存のGlobalCategoryBarと統一）
 const CAT_COLORS: Record<string, string> = {
@@ -149,6 +150,18 @@ export default function AdminPage() {
         )
     }
 
+    return <AdminDashboard data={data} />
+}
+
+function AdminDashboard({ data }: { data: AdminData }) {
+    // ユーザー×ジャンル行列からバブルプロファイル（共通軸・シェア・多様性）を導出
+    const bubble = useMemo(
+        () => data.matrix && data.matrix.length > 0
+            ? deriveBubbleProfiles(data.matrix, data.users)
+            : null,
+        [data.matrix, data.users]
+    )
+
     const s = data.summary
     const filterRows = data.filterHistogram.map(b => ({
         label: b.bucket, value: b.cnt,
@@ -197,6 +210,40 @@ export default function AdminPage() {
                         <HBars rows={catRows} />
                     </Section>
                 </div>
+
+                {/* バブルの可視化（ユーザー×ジャンル行列から導出） */}
+                {bubble ? (
+                    <>
+                        <Section
+                            title="バブルのかたち（ヒートマップ）"
+                            desc="行=ユーザー、列=ジャンル、濃さ=そのユーザーの閲覧に占めるシェア。濃い列が固まっている人ほどバブルが強い。数字は%（15%以上のみ表示）。"
+                        >
+                            <BubbleHeatmap genres={bubble.genres} profiles={bubble.profiles} />
+                        </Section>
+
+                        <div className="grid md:grid-cols-2 gap-5">
+                            <Section
+                                title="設定 × 実態"
+                                desc="横=フィルタ強度（本人が設定した視野の広さ）、縦=閲覧の実際の多様性（エントロピー）。設定どおりに多様に読めているかのギャップが見える。"
+                            >
+                                <DiversityScatter profiles={bubble.profiles} />
+                            </Section>
+
+                            <Section
+                                title="バブルの形（レーダー）"
+                                desc="ユーザーごとのジャンル分布。同一スケールなので形と大きさを直接比較できる。"
+                            >
+                                <RadarGrid genres={bubble.genres} profiles={bubble.profiles} />
+                            </Section>
+                        </div>
+                    </>
+                ) : (
+                    <Section title="バブルの可視化">
+                        <p className="text-[12px] text-muted-foreground">
+                            ヒートマップ・散布図・レーダーを表示するには、Supabase SQL Editor で migrate_admin_viz.sql を実行してください。
+                        </p>
+                    </Section>
+                )}
 
                 {/* ユーザー別 */}
                 <Section title="ユーザー別の観測" desc="バブル集中度 = 最も読むジャンルが閲覧全体に占める割合。高いほど単一ジャンルに偏り（バブルが強い）。">

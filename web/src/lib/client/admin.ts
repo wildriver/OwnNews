@@ -47,12 +47,20 @@ export interface UserDetail {
     top_ratio: number | null
 }
 
+export interface UserCategoryCell {
+    user_id: string
+    category: string
+    views: number
+}
+
 export interface AdminData {
     summary: AdminSummary
     daily: DailyActivity[]
     categories: CategoryShare[]
     filterHistogram: FilterBucket[]
     users: UserDetail[]
+    /** ユーザー×ジャンルの閲覧行列。RPC未適用（migrate_admin_viz.sql）なら null。 */
+    matrix: UserCategoryCell[] | null
 }
 
 /** ログイン中ユーザーが運営（管理者）かどうか。 */
@@ -69,15 +77,17 @@ export async function checkIsAdmin(): Promise<boolean> {
  */
 export async function fetchAdminData(days = 30): Promise<AdminData | null> {
     const supabase = createClient()
-    const [summary, daily, categories, filterHistogram, users] = await Promise.all([
+    const [summary, daily, categories, filterHistogram, users, matrix] = await Promise.all([
         supabase.rpc('admin_summary'),
         supabase.rpc('admin_daily_activity', { days }),
         supabase.rpc('admin_category_distribution'),
         supabase.rpc('admin_filter_histogram'),
         supabase.rpc('admin_user_detail'),
+        supabase.rpc('admin_user_category_matrix'),
     ])
 
     // どれか一つでも認可エラーなら管理者ではない（or 未適用）
+    // matrix は後から追加したRPCなので、未適用でもページ全体は生かす
     if (summary.error || daily.error || categories.error || filterHistogram.error || users.error) {
         return null
     }
@@ -88,5 +98,6 @@ export async function fetchAdminData(days = 30): Promise<AdminData | null> {
         categories: (categories.data ?? []) as CategoryShare[],
         filterHistogram: (filterHistogram.data ?? []) as FilterBucket[],
         users: (users.data ?? []) as UserDetail[],
+        matrix: matrix.error ? null : ((matrix.data ?? []) as UserCategoryCell[]),
     }
 }
