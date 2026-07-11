@@ -18,7 +18,7 @@ import {
     getAllInteractions, getAllArticles, getKV, setKV, putInteraction,
 } from '@/lib/client/store'
 import { LocalInteraction } from '@/lib/client/types'
-import { getUserEmail, pushSettings, pushVector, SYNCED_EVENT } from '@/lib/client/sync'
+import { getUserEmail, pushSettings, pushVector, deleteRemoteVector, SYNCED_EVENT } from '@/lib/client/sync'
 import { getSubscriptionState, subscribePush, unsubscribePush } from '@/lib/client/push'
 import { LocalFilterSlider } from '@/components/local-filter-slider'
 import { RSS_CATEGORIES, loadExcluded, saveExcluded } from '@/components/category-filter-bar'
@@ -80,7 +80,9 @@ export default function SettingsPage() {
     const handleStrengthChange = async (v: number) => {
         setStrength(v)
         await setKV('filter_strength', v)
-        pushSettings({ filterStrength: v })
+        pushSettings({ filterStrength: v }).then(ok => {
+            if (!ok) toast.error('サーバーへの保存に失敗しました（この端末には保存済み）')
+        })
     }
 
     const toggleCategory = (cat: string) => {
@@ -88,7 +90,9 @@ export default function SettingsPage() {
         if (next.has(cat)) next.delete(cat); else next.add(cat)
         setExcluded(next)
         saveExcluded(next)
-        pushSettings({ excludedCategories: Array.from(next) })
+        pushSettings({ excludedCategories: Array.from(next) }).then(ok => {
+            if (!ok) toast.error('サーバーへの保存に失敗しました（この端末には保存済み）')
+        })
     }
 
     // ---- 関心プロファイル ----
@@ -96,8 +100,11 @@ export default function SettingsPage() {
         if (!confirm('関心プロファイル（学習済みベクトル）をリセットします。\n次にフィードを開いたとき、ジャンル選択からやり直せます。\n閲覧履歴は削除されません。よろしいですか？')) return
         await setKV('user_vector', null)
         await setKV('vector_updated_at', new Date().toISOString())
+        // サーバー側の保管庫からも削除（残すと次の同期で古いベクトルが復活してしまう）
+        const ok = await deleteRemoteVector()
         setHasVector(false)
-        toast.success('関心プロファイルをリセットしました')
+        if (ok) toast.success('関心プロファイルをリセットしました（全端末に反映されます）')
+        else toast.warning('この端末ではリセットしましたが、サーバーへの反映に失敗しました。通信環境の良いところで再度お試しください')
     }
 
     // ---- 記事データの同期 ----

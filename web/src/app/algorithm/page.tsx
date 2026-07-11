@@ -107,7 +107,7 @@ v = あなたの関心ベクトル / e = 記事のベクトル / α = 学習率`
                                 <tr><td className="px-3 py-1.5">じっくり読んだ（40〜120秒）</td><td className="px-3 py-1.5 tnum">0.20</td></tr>
                                 <tr><td className="px-3 py-1.5">熟読（120秒以上）</td><td className="px-3 py-1.5 tnum">0.25</td></tr>
                                 <tr><td className="px-3 py-1.5">＋最後までスクロール</td><td className="px-3 py-1.5 tnum">+0.05（上限0.3）</td></tr>
-                                <tr><td className="px-3 py-1.5">AIで深掘り解説を開いた</td><td className="px-3 py-1.5 tnum">0.25</td></tr>
+                                <tr><td className="px-3 py-1.5">AIで深掘り（外部AIに質問）した</td><td className="px-3 py-1.5 tnum">0.25</td></tr>
                                 <tr><td className="px-3 py-1.5">ストックした</td><td className="px-3 py-1.5 tnum">0.15</td></tr>
                                 <tr><td className="px-3 py-1.5">興味なし（×・左スワイプ）</td><td className="px-3 py-1.5 tnum">−0.15（遠ざかる）</td></tr>
                             </tbody>
