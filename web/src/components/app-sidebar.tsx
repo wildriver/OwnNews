@@ -124,9 +124,13 @@ export function AppSidebar({ userEmail }: { userEmail: string }) {
                                         <div className="text-[10px] text-muted-foreground mb-1.5">足りない栄養</div>
                                         <div className="flex flex-wrap gap-1">
                                             {healthStats.missing_categories.slice(0, 3).map(c => (
-                                                <span key={c} className="text-[10px] px-1.5 py-0.5 bg-secondary text-secondary-foreground rounded border border-border">
+                                                <Link
+                                                    key={c}
+                                                    href={`/?category=${encodeURIComponent(c)}`}
+                                                    className="text-[10px] px-1.5 py-0.5 bg-secondary text-secondary-foreground rounded border border-border hover:text-primary hover:border-primary/40 transition-colors"
+                                                >
                                                     {c}
-                                                </span>
+                                                </Link>
                                             ))}
                                         </div>
                                     </div>

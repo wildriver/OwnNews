@@ -22,6 +22,15 @@ export function GlobalCategoryBar({ data }: GlobalCategoryBarProps) {
         'その他': 'bg-slate-600',
     }
 
+    // ラベル列が固定幅のため、長い名称は短縮表示する（フル名はtitle属性に残す）
+    const shortLabels: Record<string, string> = {
+        'エンターテイメント': 'エンタメ',
+        '地方・地域': '地方',
+        '中国・韓国': '中韓',
+        '訃報・人事': '訃報',
+        'サイエンス': '科学',
+    }
+
     return (
         <Card className="border-border bg-card">
             <CardHeader>
@@ -36,8 +45,8 @@ export function GlobalCategoryBar({ data }: GlobalCategoryBarProps) {
                         const color = colors[category] ?? 'bg-slate-500'
                         return (
                             <div key={category} className="flex items-center gap-3">
-                                <div className="w-20 shrink-0 text-right text-xs text-muted-foreground truncate">
-                                    {category}
+                                <div className="w-20 shrink-0 text-right text-xs text-muted-foreground truncate" title={category}>
+                                    {shortLabels[category] ?? category}
                                 </div>
                                 <div className="flex-1 bg-card rounded-full h-5 overflow-hidden">
                                     <div
