@@ -181,6 +181,15 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
                     {relatedCount + 1}紙
                 </span>
             )}
+            {(article as unknown as { serendipity?: boolean }).serendipity && (
+                <span
+                    title="セレンディピティ枠: 注目順ではなくランダムに選ばれた記事（偏食予防）"
+                    className="shrink-0 text-[10px] leading-4"
+                    aria-label="セレンディピティ枠"
+                >
+                    🎲
+                </span>
+            )}
         </div>
     )
 
