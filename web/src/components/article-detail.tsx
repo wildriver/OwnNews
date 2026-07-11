@@ -12,8 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { SafeImage } from '@/components/safe-image'
 import { ClientNutrientRadar } from '@/components/client-nutrient-radar'
-import { ExternalAiPanel } from '@/components/external-ai-panel'
-import { DiscussionPanel } from '@/components/discussion-panel'
+import { KnowMorePanel } from '@/components/know-more-panel'
 import { ReactionBar } from '@/components/reaction-bar'
 import { BookmarkButton } from '@/components/bookmark-button'
 import { getAllArticles } from '@/lib/client/store'
@@ -278,8 +277,6 @@ export function ArticleDetail({ id }: { id: string }) {
                         </Button>
                     </div>
 
-                    {/* AIで深掘り（外部AIへ質問を引き継ぐ。A案） */}
-                    <ExternalAiPanel articleId={article.id} title={article.title} link={article.link} />
                         </div>
 
                         <aside className="space-y-6 min-w-0">
@@ -311,8 +308,8 @@ export function ArticleDetail({ id }: { id: string }) {
                         )}
                     </div>
 
-                    {/* みんなの反応（X連携＋はてブコメント） */}
-                    <DiscussionPanel title={article.title} link={article.link} />
+                    {/* もっと知る（AIに聞く＋人の反応。旧: AIで深掘り/みんなの反応を統合） */}
+                    <KnowMorePanel articleId={article.id} title={article.title} link={article.link} />
                         </aside>
                     </div>
 
