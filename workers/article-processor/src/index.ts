@@ -160,6 +160,34 @@ function parseAnalysisResponse(raw: unknown): Record<string, CategorizationResul
     return map
 }
 
+/** 中分類の許可リスト（プロンプトで指定している14分類）。リスト外の幻覚出力を遮断する。 */
+const ALLOWED_MEDIUM = new Set(['政治', '経済', '国際', 'IT・テクノロジー', 'スポーツ', 'エンタメ', '科学', '社会', '地方', 'ビジネス', '生活', '環境', '文化', 'その他'])
+
+/**
+ * LLM出力の検証・浄化。
+ * 小型モデルで「本杰」「岛室」のような中国語混じりの分類名や、
+ * 記事に存在しない幻覚キーワードが混入したため、機械的に検証する。
+ * - 中分類: 許可リスト外 → 「その他」
+ * - キーワード: 記事のタイトル+概要に実際に出現する語だけ通す（抽出制約）
+ * - スコア: 0-100の整数にクランプ
+ */
+function sanitizeAnalysis(article: Article, res: CategorizationResult): CategorizationResult {
+    const text = `${article.title} ${stripHtml(article.summary || '')}`
+    const medium = ALLOWED_MEDIUM.has((res.category_medium || '').trim())
+        ? (res.category_medium || '').trim() : 'その他'
+    const minor = (Array.isArray(res.category_minor) ? res.category_minor : [])
+        .map(k => String(k).trim())
+        .filter(k => k.length >= 2 && k.length <= 12 && text.includes(k))
+        .slice(0, 5)
+    const clamp = (n: unknown) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)))
+    return {
+        id: res.id, category_medium: medium, category_minor: minor,
+        fact_score: clamp(res.fact_score), context_score: clamp(res.context_score),
+        perspective_score: clamp(res.perspective_score), emotion_score: clamp(res.emotion_score),
+        immediacy_score: clamp(res.immediacy_score),
+    }
+}
+
 async function analyzeWithWorkersAI(env: Env, articles: Article[]): Promise<Record<string, CategorizationResult>> {
     // 旧 @cf/meta/llama-3.1-8b-instruct は 2026-05-30 に廃止。現行のfp8版に差し替え。
     const chatResponse = await env.AI.run('@cf/meta/llama-3.1-8b-instruct-fp8', {
@@ -186,20 +214,27 @@ async function analyzeArticles(env: Env, articles: Article[]): Promise<Record<st
     for (let i = 0; i < articles.length; i += ANALYSIS_SUBBATCH) {
         const chunk = articles.slice(i, i + ANALYSIS_SUBBATCH)
         let map: Record<string, CategorizationResult> = {}
+        // 主力はGroqの70B（日本語の分類・キーワード品質が8Bより大幅に良い）。
+        // Workers AIの8Bは無料枠は潤沢だが中国語混じりの幻覚が出るためフォールバックに降格。
         try {
-            map = await analyzeWithWorkersAI(env, chunk)
-            if (Object.keys(map).length === 0) throw new Error('Workers AI returned no parseable results')
+            if (!env.GROQ_API_KEY) throw new Error('GROQ_API_KEY not set')
+            map = await analyzeWithGroq(env.GROQ_API_KEY, chunk)
+            if (Object.keys(map).length === 0) throw new Error('Groq returned no parseable results')
         } catch (e) {
-            console.error(`Workers AI analysis failed for chunk ${i / ANALYSIS_SUBBATCH}:`, e)
-            if (env.GROQ_API_KEY) {
+            console.error(`Groq(70B) analysis failed for chunk ${i / ANALYSIS_SUBBATCH}:`, e)
+            {
                 try {
-                    map = await analyzeWithGroq(env.GROQ_API_KEY, chunk)
+                    map = await analyzeWithWorkersAI(env, chunk)
                 } catch (ge) {
-                    console.error('Groq fallback also failed:', ge)
+                    console.error('Workers AI fallback also failed:', ge)
                 }
             }
         }
-        Object.assign(result, map)
+        // 記事本文と突き合わせて検証してから採用
+        for (const a of chunk) {
+            const r = map[a.id]
+            if (r) result[a.id] = sanitizeAnalysis(a, r)
+        }
     }
     return result
 }
@@ -213,7 +248,7 @@ async function analyzeWithGroq(apiKey: string, articles: Article[]): Promise<Rec
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            model: 'llama-3.1-8b-instant',
+            model: 'llama-3.3-70b-versatile',
             messages: [
                 { role: 'system', content: 'You are a precise JSON output machine.' },
                 { role: 'user', content: buildAnalysisPrompt(articles) }

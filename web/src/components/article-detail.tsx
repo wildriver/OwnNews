@@ -7,12 +7,12 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ExternalLink, Calendar, Tag, Sparkles, Loader2 } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Calendar, Tag, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { SafeImage } from '@/components/safe-image'
 import { ClientNutrientRadar } from '@/components/client-nutrient-radar'
-import { DeepDiveDialog } from '@/components/deep-dive-dialog'
+import { ExternalAiPanel } from '@/components/external-ai-panel'
 import { DiscussionPanel } from '@/components/discussion-panel'
 import { ReactionBar } from '@/components/reaction-bar'
 import { BookmarkButton } from '@/components/bookmark-button'
@@ -277,6 +277,9 @@ export function ArticleDetail({ id }: { id: string }) {
                             </a>
                         </Button>
                     </div>
+
+                    {/* AIで深掘り（外部AIへ質問を引き継ぐ。A案） */}
+                    <ExternalAiPanel articleId={article.id} title={article.title} link={article.link} />
                         </div>
 
                         <aside className="space-y-6 min-w-0">
@@ -379,19 +382,7 @@ export function ArticleDetail({ id }: { id: string }) {
                         </div>
                     )}
 
-                    <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-border">
-                        <DeepDiveDialog
-                            article={{ id: article.id, title: article.title, summary: article.summary, link: article.link, published: article.published }}
-                            trigger={
-                                <Button variant="outline" size="lg"
-                                    className="bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 gap-2 flex-1">
-                                    <Sparkles className="w-5 h-5" />
-                                    AIで深掘り解説
-                                </Button>
-                            }
-                        />
-                    </div>
-                </article>
+</article>
             </div>
         </div>
     )
