@@ -3,9 +3,8 @@
 // 設定画面 — 設定可能な項目をここに集約する
 //  1. アカウント・クラウド同期（Googleログイン状態。推薦データは運営Supabaseに保存）
 //  2. フィードの調整（視野の広さ・ジャンルのON/OFF）※運営Supabaseへ同期
-//  3. 関心プロファイル（学習状態・リセット）
+//  3. 関心プロファイル（学習状態・エクスポート/インポート/リセット）
 //  4. 記事データの同期（記事キャッシュ状態・手動同期）
-//  5. データのエクスポート/インポート
 
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -156,6 +155,14 @@ export default function SettingsPage() {
             if (!file) return
             try {
                 const data = JSON.parse(await file.text())
+                const parts = [
+                    data.vector ? '関心ベクトル' : null,
+                    typeof data.filter_strength === 'number' ? '視野の広さ' : null,
+                    Array.isArray(data.excluded_categories) ? 'ジャンル設定' : null,
+                    Array.isArray(data.interactions) ? `閲覧履歴 ${data.interactions.length}件` : null,
+                ].filter(Boolean).join('・')
+                if (!parts) { toast.error('このファイルにはプロファイルデータが含まれていません'); return }
+                if (!confirm(`ファイルの内容（${parts}）で現在のプロファイルを上書きします。よろしいですか？`)) return
                 if (data.vector) {
                     await setKV('user_vector', data.vector)
                     await setKV('vector_updated_at', new Date().toISOString())
@@ -311,7 +318,7 @@ export default function SettingsPage() {
                     </CardContent>
                 </Card>
 
-                {/* 3. 関心プロファイル */}
+                {/* 3. 関心プロファイル（持ち出し・復元・作り直し） */}
                 <Card className="border-border bg-card">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-[15px] flex items-center gap-2">
@@ -320,19 +327,32 @@ export default function SettingsPage() {
                         </CardTitle>
                         <CardDescription className="text-[12px]">
                             読んだ記事から学習した、あなたの関心ベクトル。推薦（バブル内）の基準になります。
+                            あなたに帰属するデータなので、ファイルとして持ち出し・復元・作り直しができます。
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="flex items-center justify-between gap-3 flex-wrap">
+                    <CardContent className="space-y-3">
                         <div className="text-[13px]">
                             状態: {hasVector
                                 ? <span className="text-primary font-medium">学習済み</span>
                                 : <span className="text-muted-foreground">未生成（フィードでジャンルを選ぶと作成されます）</span>}
                             <span className="text-muted-foreground text-[11px] ml-2 tnum">閲覧履歴 {interactionCount}件</span>
                         </div>
-                        <Button variant="outline" size="sm" onClick={handleVectorReset} disabled={!hasVector}
-                            className="border-border text-muted-foreground hover:text-foreground">
-                            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />学習をやり直す
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={handleExport} className="border-border">
+                                <Download className="w-3.5 h-3.5 mr-1.5" />エクスポート
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={handleImport} className="border-border">
+                                <Upload className="w-3.5 h-3.5 mr-1.5" />インポート
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={handleVectorReset} disabled={!hasVector}
+                                className="border-border text-muted-foreground hover:text-foreground">
+                                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />学習をやり直す
+                            </Button>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                            エクスポート＝関心ベクトル・視野の広さ・ジャンル設定・閲覧履歴をJSONファイルに保存。
+                            インポート＝そのファイルから復元（上書き前に確認します）。
+                        </p>
                     </CardContent>
                 </Card>
 
@@ -358,23 +378,6 @@ export default function SettingsPage() {
                     </CardContent>
                 </Card>
 
-                {/* 5. データ管理 */}
-                <Card className="border-border bg-card">
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-[15px]">バックアップ</CardTitle>
-                        <CardDescription className="text-[12px]">
-                            プロファイル（関心ベクトル・設定・履歴）をファイルに書き出し／読み込みできます。
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-wrap gap-2">
-                        <Button variant="outline" size="sm" onClick={handleExport} className="border-border">
-                            <Download className="w-3.5 h-3.5 mr-1.5" />エクスポート
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={handleImport} className="border-border">
-                            <Upload className="w-3.5 h-3.5 mr-1.5" />インポート
-                        </Button>
-                    </CardContent>
-                </Card>
             </div>
         </div>
     )
