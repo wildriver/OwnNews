@@ -63,6 +63,20 @@ export interface AdminData {
     matrix: UserCategoryCell[] | null
 }
 
+/**
+ * 表示用の匿名ID（決定的ハッシュ・FNV-1a）。
+ * 管理画面にメールアドレスを出さないための匿名加工。同じユーザーは常に同じIDになる
+ * ので経過観察はできるが、IDから個人は特定できない。
+ */
+export function anonUser(userId: string): string {
+    let h = 0x811c9dc5
+    for (let i = 0; i < userId.length; i++) {
+        h ^= userId.charCodeAt(i)
+        h = Math.imul(h, 0x01000193) >>> 0
+    }
+    return 'U-' + h.toString(36).toUpperCase().padStart(4, '0').slice(0, 4)
+}
+
 /** ログイン中ユーザーが運営（管理者）かどうか。 */
 export async function checkIsAdmin(): Promise<boolean> {
     const supabase = createClient()

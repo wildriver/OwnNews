@@ -8,7 +8,7 @@
 //   3. レーダー小倍数 — ユーザーごとの「バブルの形」を並べて比較
 
 import { useMemo } from 'react'
-import { UserCategoryCell, UserDetail } from '@/lib/client/admin'
+import { UserCategoryCell, UserDetail, anonUser } from '@/lib/client/admin'
 
 // SVG用のジャンル配色（テーブルのtailwindクラス配色と同系のhex）
 const CAT_HEX: Record<string, string> = {
@@ -123,8 +123,8 @@ export function BubbleHeatmap({ genres, profiles }: { genres: string[]; profiles
                 <div className="space-y-px">
                     {rows.map(p => (
                         <div key={p.user_id} className="grid gap-px items-center" style={{ gridTemplateColumns: `140px repeat(${genres.length}, 1fr) 44px` }}>
-                            <div className="text-[10px] text-muted-foreground truncate pr-2" title={p.user_id}>
-                                {p.user_id.split('@')[0]}
+                            <div className="text-[10px] text-muted-foreground truncate pr-2 tnum">
+                                {anonUser(p.user_id)}
                             </div>
                             {genres.map(g => {
                                 const s = p.shares.get(g) ?? 0
@@ -135,7 +135,7 @@ export function BubbleHeatmap({ genres, profiles }: { genres: string[]; profiles
                                         key={g}
                                         className="h-6 rounded-[3px] flex items-center justify-center"
                                         style={{ backgroundColor: `rgba(14,159,110,${alpha.toFixed(3)})` }}
-                                        title={`${p.user_id} × ${g}: ${(s * 100).toFixed(1)}%`}
+                                        title={`${anonUser(p.user_id)} × ${g}: ${(s * 100).toFixed(1)}%`}
                                     >
                                         {s >= 0.15 && (
                                             <span className={`text-[9px] tnum ${s >= 0.45 ? 'text-white' : 'text-foreground/70'}`}>
@@ -173,6 +173,38 @@ export function DiversityScatter({ profiles }: { profiles: BubbleProfile[] }) {
         return best
     }
     if (pts.length === 0) return <p className="text-sm text-muted-foreground text-center py-4">データがありません</p>
+
+    // 完全に同じ座標の点は横に少しずつずらす（重なって区別できなくなるのを防ぐ）
+    const coordCount = new Map<string, number>()
+    const nodes = pts.map(p => {
+        const key = `${p.filter_strength!.toFixed(2)},${p.entropy.toFixed(2)}`
+        const n = coordCount.get(key) ?? 0
+        coordCount.set(key, n + 1)
+        const fan = [0, 14, -14, 28, -28, 42][Math.min(n, 5)]
+        const r = 4 + 8 * Math.sqrt(p.total / maxTotal)
+        return { p, cx: x(p.filter_strength!) + fan, cy: y(p.entropy), r, cat: topCat(p) }
+    })
+
+    // ラベル配置: 上→下→さらに外側…の順で、既存ラベル・象限注記と重ならない位置を選ぶ
+    type LBox = { x1: number; y1: number; x2: number; y2: number }
+    const placed: LBox[] = [
+        { x1: x(0.03), y1: y(0.04) - 9, x2: x(0.03) + 160, y2: y(0.04) + 3 },      // 左下の象限注記
+        { x1: x(0.97) - 160, y1: y(0.96) - 9, x2: x(0.97), y2: y(0.96) + 3 },      // 右上の象限注記
+    ]
+    const overlaps = (a: LBox, b: LBox) => !(a.x2 < b.x1 || a.x1 > b.x2 || a.y2 < b.y1 || a.y1 > b.y2)
+    const labels = nodes.map(nd => {
+        const text = anonUser(nd.p.user_id)
+        const w = text.length * 5.2 + 4
+        const cands = [nd.cy - nd.r - 4, nd.cy + nd.r + 11, nd.cy - nd.r - 15, nd.cy + nd.r + 22, nd.cy - nd.r - 26]
+        let ly = cands[0]
+        for (const c of cands) {
+            const box = { x1: nd.cx - w / 2, y1: c - 9, x2: nd.cx + w / 2, y2: c + 3 }
+            if (!placed.some(b => overlaps(box, b))) { ly = c; break }
+        }
+        placed.push({ x1: nd.cx - w / 2, y1: ly - 9, x2: nd.cx + w / 2, y2: ly + 3 })
+        return { text, ly }
+    })
+
     return (
         <div>
             <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
@@ -194,28 +226,23 @@ export function DiversityScatter({ profiles }: { profiles: BubbleProfile[] }) {
                     </g>
                 ))}
                 {/* 点 */}
-                {pts.map(p => {
-                    const r = 4 + 8 * Math.sqrt(p.total / maxTotal)
-                    const cat = topCat(p)
-                    return (
-                        <g key={p.user_id}>
-                            <circle
-                                cx={x(p.filter_strength!)} cy={y(p.entropy)} r={r}
-                                fill={catHex(cat)} fillOpacity={0.55} stroke={catHex(cat)} strokeWidth={1.5}
-                            >
-                                <title>{`${p.user_id}\n強度 ${p.filter_strength!.toFixed(2)} / 多様性 ${p.entropy.toFixed(2)} / ${p.total}閲覧 / 最多: ${cat}`}</title>
-                            </circle>
-                            {pts.length <= 12 && (
-                                <text x={x(p.filter_strength!)} y={y(p.entropy) - r - 3} fontSize={8} textAnchor="middle" className="fill-muted-foreground">
-                                    {p.user_id.split('@')[0].slice(0, 10)}
-                                </text>
-                            )}
-                        </g>
-                    )
-                })}
+                {nodes.map(nd => (
+                    <circle key={nd.p.user_id}
+                        cx={nd.cx} cy={nd.cy} r={nd.r}
+                        fill={catHex(nd.cat)} fillOpacity={0.55} stroke={catHex(nd.cat)} strokeWidth={1.5}
+                    >
+                        <title>{`${anonUser(nd.p.user_id)}\n強度 ${nd.p.filter_strength!.toFixed(2)} / 多様性 ${nd.p.entropy.toFixed(2)} / ${nd.p.total}閲覧 / 最多: ${nd.cat}`}</title>
+                    </circle>
+                ))}
+                {/* ラベル（点の描画後に重ねる） */}
+                {nodes.length <= 16 && nodes.map((nd, i) => (
+                    <text key={nd.p.user_id} x={nd.cx} y={labels[i].ly} fontSize={8} textAnchor="middle" className="fill-muted-foreground tnum">
+                        {labels[i].text}
+                    </text>
+                ))}
             </svg>
             <p className="text-[10px] text-muted-foreground mt-1.5">
-                対角線から外れた人ほど「設定と実態のギャップ」が大きい。円の大きさ=閲覧数、色=最多ジャンル。
+                対角線から外れた人ほど「設定と実態のギャップ」が大きい。円の大きさ=閲覧数、色=最多ジャンル。IDは匿名加工。
             </p>
         </div>
     )
@@ -254,7 +281,7 @@ function Radar({ p, genres, maxShare }: { p: BubbleProfile; genres: string[]; ma
                 })}
             </svg>
             <div className="text-center mt-1">
-                <div className="text-[10px] font-medium truncate" title={p.user_id}>{p.user_id.split('@')[0]}</div>
+                <div className="text-[10px] font-medium truncate tnum">{anonUser(p.user_id)}</div>
                 <div className="text-[9px] text-muted-foreground tnum">{p.total}閲覧 / 多様性 {p.entropy.toFixed(2)}</div>
             </div>
         </div>
