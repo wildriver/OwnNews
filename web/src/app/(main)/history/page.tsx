@@ -3,9 +3,10 @@
 // 閲覧履歴 — 1記事1行の高密度リスト＋ページング（50件/ページ）。
 // IndexedDBキャッシュを表示し、運営Supabaseからの同期完了で最新化。
 
-import { useState, useEffect, useMemo } from 'react'
+import { Suspense, useState, useEffect, useMemo } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Clock, ExternalLink, Loader2, Sparkles, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Clock, ExternalLink, Loader2, Sparkles, BookOpen, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import Link from 'next/link'
 import { getAllInteractions } from '@/lib/client/store'
 import { LocalInteraction } from '@/lib/client/types'
@@ -85,6 +86,37 @@ function HistoryRow({ item }: { item: LocalInteraction }) {
     )
 }
 
+// interaction がフィルタ条件に一致するか判定する。
+// category_medium が完全一致すればOK、なければ category 文字列への部分一致も許容する（寛容な判定）。
+function matchesFilter(item: LocalInteraction, cat: string | null, kw: string | null): boolean {
+    if (cat) {
+        const mediumMatch = item.category_medium === cat
+        const looseMatch = (item.category || '').includes(cat)
+        if (!mediumMatch && !looseMatch) return false
+    }
+    if (kw) {
+        if (!(item.title || '').includes(kw)) return false
+    }
+    return true
+}
+
+// 適用中のフィルタを示すチップ。×クリックでクエリを除去して /history へ戻る。
+function FilterChip({ cat, kw, onClear }: { cat: string | null; kw: string | null; onClear: () => void }) {
+    if (!cat && !kw) return null
+    const label = [cat, kw].filter(Boolean).join(' ・ ')
+    return (
+        <div className="flex items-center">
+            <button
+                onClick={onClear}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent text-primary text-[12px] font-medium hover:bg-accent/70 transition-colors"
+            >
+                フィルタ: {label}
+                <X className="w-3 h-3" />
+            </button>
+        </div>
+    )
+}
+
 function PaginatedList({ items }: { items: LocalInteraction[] }) {
     const [page, setPage] = useState(0)
     const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
@@ -129,8 +161,12 @@ function PaginatedList({ items }: { items: LocalInteraction[] }) {
     )
 }
 
-export default function HistoryPage() {
+function HistoryPageInner() {
     const [interactions, setInteractions] = useState<LocalInteraction[] | null>(null)
+    const router = useRouter()
+    const searchParams = useSearchParams()
+    const cat = searchParams.get('cat')
+    const kw = searchParams.get('kw')
 
     useEffect(() => {
         const load = () => getAllInteractions().then(ints =>
@@ -151,9 +187,11 @@ export default function HistoryPage() {
 
     // タイトル未取得（Phase1以前の古い履歴）は表示しない。実データはSQL整理＋同期で削除される。
     const withTitle = interactions.filter(i => (i.title || '').trim() !== '')
-    const viewed = withTitle.filter(i => i.type === 'view' || i.type === 'deep_dive')
-    const stocked = withTitle.filter(i => i.type === 'bookmark')
-    const excluded = withTitle.filter(i => i.type === 'not_interested')
+    // ダッシュボードのチャートからの遷移用に、カテゴリ・キーワードでの絞り込みを全タブへ適用する。
+    const filtered = withTitle.filter(i => matchesFilter(i, cat, kw))
+    const viewed = filtered.filter(i => i.type === 'view' || i.type === 'deep_dive')
+    const stocked = filtered.filter(i => i.type === 'bookmark')
+    const excluded = filtered.filter(i => i.type === 'not_interested')
 
     return (
         <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
@@ -164,6 +202,8 @@ export default function HistoryPage() {
                         閲覧履歴と非表示設定（アカウントに同期）。●は閲覧時間から推定した興味の強さです。
                     </p>
                 </header>
+
+                <FilterChip cat={cat} kw={kw} onClear={() => router.push('/history')} />
 
                 <Tabs defaultValue="viewed" className="w-full">
                     <TabsList className="grid w-full grid-cols-3 bg-card p-1 mb-4">
@@ -190,5 +230,18 @@ export default function HistoryPage() {
                 </Tabs>
             </div>
         </div>
+    )
+}
+
+export default function HistoryPage() {
+    // useSearchParams は Suspense 境界が必要なためラップする。
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+        }>
+            <HistoryPageInner />
+        </Suspense>
     )
 }

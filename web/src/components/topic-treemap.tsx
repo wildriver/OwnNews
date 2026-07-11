@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 interface TopicTreemapProps {
     distribution: Record<string, number>
+    onSelect?: (medium: string) => void
 }
 
 // Color palette for treemap cells
@@ -13,7 +14,7 @@ const COLORS = [
     '#4ADE80', '#F472B6', '#FACC15',
 ]
 
-export function TopicTreemap({ distribution }: TopicTreemapProps) {
+export function TopicTreemap({ distribution, onSelect }: TopicTreemapProps) {
     const entries = Object.entries(distribution)
         .filter(([, count]) => count > 0)
         .sort((a, b) => b[1] - a[1])
@@ -40,7 +41,10 @@ export function TopicTreemap({ distribution }: TopicTreemapProps) {
         <Card className="border-border bg-card">
             <CardHeader>
                 <CardTitle className="text-lg font-bold text-foreground">トピック詳細</CardTitle>
-                <CardDescription>中分類別の摂取バランス</CardDescription>
+                <CardDescription>
+                    中分類別の摂取バランス
+                    {onSelect && '（クリックで読んだ記事一覧へ）'}
+                </CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-4 gap-1 h-[260px]">
@@ -54,12 +58,14 @@ export function TopicTreemap({ distribution }: TopicTreemapProps) {
                         return (
                             <div
                                 key={topic}
-                                className="rounded-lg flex flex-col items-center justify-center text-center p-2 transition-all hover:scale-[1.02] cursor-default"
+                                onClick={onSelect ? () => onSelect(topic) : undefined}
+                                className={`rounded-lg flex flex-col items-center justify-center text-center p-2 transition-all hover:scale-[1.02] ${onSelect ? '' : 'cursor-default'}`}
                                 style={{
                                     gridColumn: `span ${colSpan}`,
                                     gridRow: `span ${rowSpan}`,
                                     backgroundColor: `${color}15`,
                                     border: `1px solid ${color}30`,
+                                    cursor: onSelect ? 'pointer' : undefined,
                                 }}
                             >
                                 <span

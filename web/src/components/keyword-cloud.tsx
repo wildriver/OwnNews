@@ -5,9 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 interface KeywordBarProps {
     data: { keyword: string; count: number }[]
+    onSelect?: (keyword: string) => void
 }
 
-export function KeywordBar({ data }: KeywordBarProps) {
+export function KeywordBar({ data, onSelect }: KeywordBarProps) {
     if (data.length === 0) {
         return (
             <Card className="border-border bg-card">
@@ -26,7 +27,10 @@ export function KeywordBar({ data }: KeywordBarProps) {
         <Card className="border-border bg-card">
             <CardHeader>
                 <CardTitle className="text-lg font-bold text-foreground">注目キーワード</CardTitle>
-                <CardDescription>よく見ている記事のキーワード Top10</CardDescription>
+                <CardDescription>
+                    よく見ている記事のキーワード Top10
+                    {onSelect && '（クリックで読んだ記事一覧へ）'}
+                </CardDescription>
             </CardHeader>
             <CardContent className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -62,6 +66,12 @@ export function KeywordBar({ data }: KeywordBarProps) {
                             fill="#2563EB"
                             radius={[0, 4, 4, 0]}
                             name="件数"
+                            cursor={onSelect ? 'pointer' : undefined}
+                            onClick={onSelect ? (barData: { keyword?: string; payload?: { keyword: string } }) => {
+                                // Y軸は省略表示のため、クリック時は省略前のフル文字列を使う
+                                const keyword = barData.payload?.keyword ?? barData.keyword
+                                if (keyword) onSelect(keyword)
+                            } : undefined}
                         />
                     </BarChart>
                 </ResponsiveContainer>
