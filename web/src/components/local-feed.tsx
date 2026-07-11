@@ -7,8 +7,9 @@
 // ユーザー単位で保存し端末間同期。IndexedDBは高速表示用キャッシュ。
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { BubbleFeedLayout } from '@/components/bubble-feed-layout'
+import { TopicFeed } from '@/components/topic-feed'
 import { LocalFilterSlider } from '@/components/local-filter-slider'
 import { TextSizeControl } from '@/components/text-size-control'
 import { CategoryFilterBar, loadExcluded, saveExcluded } from '@/components/category-filter-bar'
@@ -30,6 +31,7 @@ function todayLabel(): string {
 
 export function LocalFeed() {
     const searchParams = useSearchParams()
+    const router = useRouter()
     const selectedCategory = searchParams.get('category')
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
@@ -111,6 +113,16 @@ export function LocalFeed() {
         window.addEventListener(INTERACTION_EVENT, handler)
         return () => window.removeEventListener(INTERACTION_EVENT, handler)
     }, [])
+
+    // ---- 表示ビュー: おまかせ（バブル） / トピック別。端末に記憶 ----
+    const [view, setView] = useState<'mix' | 'topics'>(() => {
+        if (typeof window === 'undefined') return 'mix'
+        return localStorage.getItem('ownnews_feedview') === 'topics' ? 'topics' : 'mix'
+    })
+    const changeView = (v: 'mix' | 'topics') => {
+        setView(v)
+        try { localStorage.setItem('ownnews_feedview', v) } catch { /* noop */ }
+    }
 
     // ---- スライダー: 端末側で即時再計算し、設定を運営Supabaseへ同期 ----
     const handleStrengthChange = useCallback((v: number) => {
@@ -195,13 +207,34 @@ export function LocalFeed() {
                 </div>
                 <div className="flex items-center gap-2">
                     <TextSizeControl className="hidden md:inline-flex" />
-                    {!isFilterMode && canRank && (
+                    {!isFilterMode && canRank && view === 'mix' && (
                         <LocalFilterSlider value={strength} onChange={handleStrengthChange} />
                     )}
                 </div>
             </header>
 
             {!selectedCategory && <CategoryFilterBar excluded={excluded} onExcludeChange={handleExcludeChange} />}
+
+            {/* 表示ビュー切替: おまかせ（バブル） / トピック別 */}
+            {!isFilterMode && articles.length > 0 && (
+                <div className="mb-3 inline-flex items-center rounded-lg border border-border bg-card p-0.5" role="group" aria-label="表示ビュー">
+                    {([
+                        { id: 'mix', label: 'おまかせ' },
+                        { id: 'topics', label: 'トピック別' },
+                    ] as { id: 'mix' | 'topics'; label: string }[]).map(v => (
+                        <button
+                            key={v.id}
+                            onClick={() => changeView(v.id)}
+                            aria-pressed={view === v.id}
+                            className={`h-7 px-3 text-[12px] font-medium rounded-md transition-colors ${view === v.id
+                                ? 'bg-accent text-accent-foreground'
+                                : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            {v.label}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* 記事パック未取得（初回・オフライン） */}
             {articles.length === 0 && (
@@ -260,14 +293,23 @@ export function LocalFeed() {
             )}
 
             {articles.length > 0 && (
-                <BubbleFeedLayout
-                    inBubbleArticles={feed.inBubble}
-                    outBubbleArticles={feed.outBubble}
-                    fallbackArticles={fallbackArticles}
-                    bubbleMode={isFilterMode || !canRank ? 'none' : 'vector'}
-                    filterStrength={strength}
-                    selectedCategory={selectedCategory}
-                />
+                view === 'topics' && !isFilterMode ? (
+                    <TopicFeed
+                        articles={visibleArticles}
+                        seenIds={seenIds}
+                        dismissedIds={dismissedIds}
+                        onCategoryClick={(cat) => router.push(`/?category=${encodeURIComponent(cat)}`)}
+                    />
+                ) : (
+                    <BubbleFeedLayout
+                        inBubbleArticles={feed.inBubble}
+                        outBubbleArticles={feed.outBubble}
+                        fallbackArticles={fallbackArticles}
+                        bubbleMode={isFilterMode || !canRank ? 'none' : 'vector'}
+                        filterStrength={strength}
+                        selectedCategory={selectedCategory}
+                    />
+                )
             )}
         </div>
     )

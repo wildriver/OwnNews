@@ -287,6 +287,62 @@ export function filterArticles(
     return groupArticles(sorted)
 }
 
+// ---- トピック別ビュー ----
+
+export interface TopicSection {
+    category: string
+    /** 表示用記事（先頭は注目順、最後の1枠はセレンディピティ抽出） */
+    articles: GroupedArticle[]
+    /** このトピックの全記事数（「もっと見る」の期待値表示用） */
+    total: number
+}
+
+/** 各セクションの表示枚数（うち1枠はセレンディピティ） */
+const SECTION_SIZE = 6
+/** セレンディピティ枠の抽出対象: 注目上位を除いた「深いところ」から選ぶ */
+const SERENDIPITY_SKIP = 12
+
+/**
+ * トピック別ビュー用のセクションを構築する。
+ * 各トピック内は「世間の窓」と同じ注目順（socialScore→新しさ）だが、
+ * 最後の1枠は敢えて上位圏外からランダムに選ぶ「セレンディピティ枠」（🎲印付き）。
+ * 固定の人気順だけを見せ続けると偏食が進むため、毎回違う出会いを混ぜる。
+ * セクション自体の並び順のシャッフルは表示側（TopicFeed）が行う。
+ */
+export function buildTopicSections(
+    articles: PackArticle[],
+    seenIds: Set<string>,
+    dismissedIds: Set<string>
+): TopicSection[] {
+    const candidates = articles.filter(a => !seenIds.has(a.id) && !dismissedIds.has(a.id))
+    const buckets = new Map<string, PackArticle[]>()
+    for (const a of candidates) {
+        const cat = primaryCat(a) || 'その他'
+        const arr = buckets.get(cat) ?? []
+        arr.push(a)
+        buckets.set(cat, arr)
+    }
+
+    const sections: TopicSection[] = []
+    for (const [category, arr] of buckets) {
+        if (arr.length < 3) continue  // 記事が少なすぎるトピックはセクション化しない
+        arr.sort(bySocialThenDate)
+        const head = arr.slice(0, SECTION_SIZE - 1)
+        // セレンディピティ枠: 注目上位(SERENDIPITY_SKIP件)より深いところからランダムに1本
+        const pool = arr.slice(Math.min(SERENDIPITY_SKIP, head.length))
+            .filter(a => !head.includes(a))
+        const picked = head.map(a => toArticle(a, 0, false))
+        if (pool.length > 0) {
+            const lucky = pool[Math.floor(Math.random() * pool.length)]
+            const la = toArticle(lucky, 0, false) as Article & { serendipity?: boolean }
+            la.serendipity = true
+            picked.push(la)
+        }
+        sections.push({ category, articles: groupArticles(picked), total: arr.length })
+    }
+    return sections
+}
+
 // ---- 類似記事グルーピング（貪欲クラスタリング） ----
 
 export function groupArticles(articles: Article[], threshold: number = GROUPING_THRESHOLD): GroupedArticle[] {
