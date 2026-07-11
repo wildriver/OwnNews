@@ -10,12 +10,14 @@ interface NutrientRadarProps {
 }
 
 export function NutrientRadar({ fact, context, perspective, emotion, immediacy, className }: NutrientRadarProps) {
+    // 軸ラベルは日本語のみに短縮。日英併記だと狭いカラムでは英語部分が
+    // 「ediacy)」のように断片表示され意味不明になるため。
     const data = [
-        { subject: '事実 (Fact)', A: fact, fullMark: 100 },
-        { subject: '背景 (Context)', A: context, fullMark: 100 },
-        { subject: '視点 (Perspective)', A: perspective, fullMark: 100 },
-        { subject: '感情 (Emotion)', A: emotion, fullMark: 100 },
-        { subject: '速報 (Immediacy)', A: immediacy, fullMark: 100 },
+        { subject: '事実', A: fact, fullMark: 100 },
+        { subject: '背景', A: context, fullMark: 100 },
+        { subject: '視点', A: perspective, fullMark: 100 },
+        { subject: '感情', A: emotion, fullMark: 100 },
+        { subject: '速報', A: immediacy, fullMark: 100 },
     ]
 
     return (

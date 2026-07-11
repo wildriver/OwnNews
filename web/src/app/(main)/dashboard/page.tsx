@@ -5,6 +5,7 @@
 // サーバへの問い合わせは発生しない。
 
 import { useState, useEffect, useMemo } from 'react'
+import Link from 'next/link'
 import { HealthRadarInfo } from '@/components/health-radar'
 import { ActivityBarChart } from '@/components/activity-chart'
 import { TopicTreemap } from '@/components/topic-treemap'
@@ -183,9 +184,13 @@ export default function DashboardPage() {
                                 以下のトピックに触れることで、視野を広げることができます：
                                 <span className="block mt-2">
                                     {healthStats.missing_categories.map(c => (
-                                        <span key={c} className="inline-block bg-secondary px-2 py-1 rounded mr-2 text-xs text-foreground border border-border">
+                                        <Link
+                                            key={c}
+                                            href={`/?category=${encodeURIComponent(c)}`}
+                                            className="inline-block bg-secondary px-2 py-1 rounded mr-2 text-xs text-foreground border border-border hover:text-primary hover:border-primary/40 transition-colors"
+                                        >
                                             {c}
-                                        </span>
+                                        </Link>
                                     ))}
                                 </span>
                             </p>

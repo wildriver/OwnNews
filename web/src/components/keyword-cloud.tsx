@@ -46,7 +46,10 @@ export function KeywordBar({ data }: KeywordBarProps) {
                             fontSize={11}
                             tickLine={false}
                             axisLine={false}
-                            width={80}
+                            width={88}
+                            tickFormatter={(value: string) =>
+                                value.length > 7 ? `${value.slice(0, 6)}…` : value
+                            }
                         />
                         <Tooltip
                             contentStyle={{ backgroundColor: '#1e293b', borderColor: '#E5E7E3', color: '#1A1C1A' }}
