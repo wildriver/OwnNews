@@ -2,19 +2,30 @@
 
 // Information Health ダッシュボード（ローカル計算版）
 // すべての統計をIndexedDB内の閲覧履歴と記事パックから計算する。
-// サーバへの問い合わせは発生しない。
+// サーバへの問い合わせは発生しない（リアクション一覧のみ本人行をRLS下で取得）。
+//
+// 構成（重要度順）:
+//   1. 情報的健康ヒーロー（スコア＋ジャンル・栄養レーダー）… 主役を最初に
+//   2. 見落としニュース（みんなは読んでいる×あなたは未読）
+//   3. トピック詳細・注目キーワード（クリックで読んだ記事一覧へ）
+//   4. あなたのリアクション（タップで記事一覧）／あなたvs全体
+//   5. 活動・時間帯
+//   6. 推移・季節（長期利用向け）・記事母集団 … 後半へ
 
 import { useState, useEffect, useMemo } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { HealthScoreCard } from '@/components/health-score-card'
 import { HealthRadarInfo } from '@/components/health-radar'
-import { ActivityBarChart } from '@/components/activity-chart'
+import { NutrientRadarInfo } from '@/components/nutrient-radar-info'
+import { MissedNews } from '@/components/missed-news'
 import { TopicTreemap } from '@/components/topic-treemap'
 import { KeywordBar } from '@/components/keyword-cloud'
-import { NutrientRadarInfo } from '@/components/nutrient-radar-info'
+import { ReactionExplorer } from '@/components/reaction-explorer'
+import { CategoryCompare } from '@/components/category-compare'
+import { ActivityBarChart } from '@/components/activity-chart'
 import { TopicTransitionChart } from '@/components/topic-transition-chart'
 import { GlobalCategoryBar } from '@/components/global-category-bar'
 import { SeasonalCategoryChart, HourlyActivityChart } from '@/components/seasonal-chart'
-import { ReactionStats } from '@/components/reaction-stats'
 import {
     computeHealthStats,
     computeActivityHistory,
@@ -30,6 +41,7 @@ import { SYNCED_EVENT } from '@/lib/client/sync'
 import { Loader2 } from 'lucide-react'
 
 export default function DashboardPage() {
+    const router = useRouter()
     const [period, setPeriod] = useState<Period>('30d')
     const [interactions, setInteractions] = useState<LocalInteraction[] | null>(null)
     const [articles, setArticles] = useState<PackArticle[]>([])
@@ -83,9 +95,6 @@ export default function DashboardPage() {
         )
     }
 
-    const topMedium = Object.entries(healthStats.medium_distribution)
-        .sort((a, b) => b[1] - a[1])[0]
-
     return (
         <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
             <div className="max-w-7xl mx-auto space-y-8">
@@ -115,88 +124,44 @@ export default function DashboardPage() {
                     </div>
                 </header>
 
-                <div className="bg-card border border-border rounded-xl p-6">
-                    <h3 className="text-lg font-bold text-foreground mb-4">{periodLabel}のサマリー</h3>
-                    <div className="text-zinc-700 leading-relaxed text-sm space-y-2">
-                        <p>
-                            この期間中、<span className="text-primary font-bold">{healthStats.total_viewed}記事</span>を分析しています。
-                            情報摂取のバランス判定は<span className="text-indigo-600 font-bold">「{healthStats.bias_level}」</span>です。
-                        </p>
-                    </div>
-                </div>
-
-                {/* Row 1: Radar (Category + Nutrient) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* 1. 情報的健康ヒーロー: スコア + ジャンルレーダー + 栄養レーダー */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <HealthScoreCard stats={healthStats} periodLabel={periodLabel} />
                     <HealthRadarInfo distribution={healthStats.category_distribution} label={periodLabel} />
                     <NutrientRadarInfo averages={healthStats.nutrient_averages} />
                 </div>
 
-                {/* みんなの感情（全体のリアクション分布）＋自分の意見バランス */}
-                <ReactionStats />
+                {/* 2. 見落としニュース（みんなは読んでいる × あなたは未読） */}
+                <MissedNews articles={articles} interactions={interactions} />
 
-                {/* 季節ごとの関心（月×カテゴリ） */}
-                <SeasonalCategoryChart data={seasonal.data} categories={seasonal.categories} total={seasonal.total} />
+                {/* 3. トピック詳細・注目キーワード（クリックで読んだ記事一覧へ） */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <TopicTreemap
+                        distribution={healthStats.medium_distribution}
+                        onSelect={(m) => router.push(`/history?cat=${encodeURIComponent(m)}`)}
+                    />
+                    <KeywordBar
+                        data={healthStats.top_keywords}
+                        onSelect={(kw) => router.push(`/history?kw=${encodeURIComponent(kw)}`)}
+                    />
+                </div>
 
-                {/* Row 2: Activity + 時間帯 */}
+                {/* 4. リアクション探索 ＋ あなたvs全体 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                    <ReactionExplorer articles={articles} interactions={interactions} />
+                    <CategoryCompare articles={articles} myDistribution={healthStats.category_distribution} />
+                </div>
+
+                {/* 5. 活動・時間帯 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <ActivityBarChart data={activityHistory} />
                     <HourlyActivityChart data={hourly} />
                 </div>
 
-                {/* Row 2: Transition Line Chart */}
+                {/* 6. 長期向け: 推移・季節・記事母集団 */}
                 <TopicTransitionChart series={healthSeries} />
-
-                {/* Row 3: Global article distribution */}
+                <SeasonalCategoryChart data={seasonal.data} categories={seasonal.categories} total={seasonal.total} />
                 <GlobalCategoryBar data={globalCategoryDist} />
-
-                {/* Row 4: Treemap + Keyword Bar */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <TopicTreemap distribution={healthStats.medium_distribution} />
-                    <KeywordBar data={healthStats.top_keywords} />
-                </div>
-
-                <div className="bg-card border border-border rounded-xl p-6">
-                    <h3 className="text-lg font-bold text-foreground mb-4">詳細分析</h3>
-                    <div className="text-zinc-700 leading-relaxed text-sm space-y-2">
-                        {healthStats.dominant_category && (
-                            <p>
-                                最も多く接しているトピックは<span className="text-primary font-bold">「{healthStats.dominant_category}」</span>で、全体の{Math.round(healthStats.dominant_ratio * 100)}%を占めています。
-                            </p>
-                        )}
-                        {topMedium && (
-                            <p>
-                                中分類で最も注目しているテーマは<span className="text-emerald-600 font-bold">「{topMedium[0]}」</span>（{topMedium[1]}件）です。
-                            </p>
-                        )}
-                        {healthStats.top_keywords.length > 0 && (
-                            <p>
-                                頻出キーワード: {healthStats.top_keywords.slice(0, 5).map((kw, i) => (
-                                    <span key={kw.keyword}>
-                                        {i > 0 && '、'}
-                                        <span className="text-violet-600 font-medium">{kw.keyword}</span>
-                                        <span className="text-muted-foreground text-xs">({kw.count})</span>
-                                    </span>
-                                ))}
-                            </p>
-                        )}
-                        {healthStats.missing_categories.length > 0 && (
-                            <p>
-                                以下のトピックに触れることで、視野を広げることができます：
-                                <span className="block mt-2">
-                                    {healthStats.missing_categories.map(c => (
-                                        <Link
-                                            key={c}
-                                            href={`/?category=${encodeURIComponent(c)}`}
-                                            className="inline-block bg-secondary px-2 py-1 rounded mr-2 text-xs text-foreground border border-border hover:text-primary hover:border-primary/40 transition-colors"
-                                        >
-                                            {c}
-                                        </Link>
-                                    ))}
-                                </span>
-                            </p>
-                        )}
-                    </div>
-                </div>
             </div>
         </div>
     )
