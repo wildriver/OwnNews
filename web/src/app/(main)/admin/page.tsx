@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2, Users, Eye, Sparkles, EyeOff, BellRing, Gauge, ShieldAlert } from 'lucide-react'
-import { fetchAdminData, AdminData } from '@/lib/client/admin'
+import { fetchAdminData, AdminData, anonUser } from '@/lib/client/admin'
 import { deriveBubbleProfiles, BubbleHeatmap, DiversityScatter, RadarGrid } from '@/components/admin-bubble-viz'
 
 // ジャンル配色（既存のGlobalCategoryBarと統一）
@@ -246,7 +246,7 @@ function AdminDashboard({ data }: { data: AdminData }) {
                 )}
 
                 {/* ユーザー別 */}
-                <Section title="ユーザー別の観測" desc="バブル集中度 = 最も読むジャンルが閲覧全体に占める割合。高いほど単一ジャンルに偏り（バブルが強い）。">
+                <Section title="ユーザー別の観測" desc="バブル集中度 = 最も読むジャンルが閲覧全体に占める割合。高いほど単一ジャンルに偏り（バブルが強い）。IDは匿名加工（同一ユーザーは常に同じID）。">
                     <div className="overflow-x-auto -mx-1">
                         <table className="w-full text-[12px] min-w-[640px]">
                             <thead>
@@ -266,7 +266,7 @@ function AdminDashboard({ data }: { data: AdminData }) {
                                     const fs = u.filter_strength ?? 0.5
                                     return (
                                         <tr key={u.user_id} className="hover:bg-secondary/50">
-                                            <td className="py-2 px-2 max-w-[180px] truncate" title={u.user_id}>{u.user_id}</td>
+                                            <td className="py-2 px-2 tnum">{anonUser(u.user_id)}</td>
                                             <td className="py-2 px-2 text-right tnum">{u.views}</td>
                                             <td className="py-2 px-2 text-right tnum text-indigo-600">{u.deep_dives || ''}</td>
                                             <td className="py-2 px-2 text-right tnum text-muted-foreground">{u.dismissed || ''}</td>
