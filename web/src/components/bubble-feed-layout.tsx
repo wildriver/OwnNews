@@ -10,6 +10,58 @@ import { GroupedArticle } from '@/lib/types'
 const PAGE_SIZE = 24     // リストモードの1ページ
 const OUT_PAGE = 12      // バブル外の追加読み込み単位
 
+/** ローダーがビューポート下端から何px以内に入ったら追加読込するか */
+const REVEAL_MARGIN = 600
+
+/**
+ * 無限スクロールで少しずつ表示件数を増やすフック。
+ *
+ * IntersectionObserverは使わない。理由:
+ *  - IOは「交差状態の変化」でしか発火しないため、追加読込後もローダーが画面内に
+ *    留まると二度と発火せずデッドロックする（初期表示がほぼ画面に収まりスクロール量が
+ *    小さいときに顕在化。リサイズで交差が再計算されると復帰、という報告と一致）。
+ *  - 一部の環境（バックグラウンドタブ等）ではIO自体が抑制され発火しないことがある。
+ *
+ * 代わりに「ローダーの位置をscroll/resizeと各描画後に直接測る」方式にする:
+ *  - 依存配列に count を含め、1めくりごとに再チェック → まだ画面下端付近にあれば
+ *    続けて読み込み、ローダーが画面外へ押し出されるまで自然にループ（短いページの
+ *    自動充填＝デッドロック解消）。
+ *  - scroll は capture:true で登録し、内側スクロールコンテナ（main等）のスクロールも拾う。
+ */
+function useInfiniteReveal(total: number, step: number, initial: number, resetKey: unknown) {
+  const [count, setCount] = useState(initial)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // データ差し替え・初期値変更で先頭に戻す
+  useEffect(() => { setCount(initial) }, [resetKey, initial])
+
+  useEffect(() => {
+    if (count >= total) return
+    let raf = 0
+    const check = () => {
+      raf = 0
+      const el = ref.current
+      if (!el) return
+      const vh = window.innerHeight || document.documentElement.clientHeight
+      if (el.getBoundingClientRect().top <= vh + REVEAL_MARGIN) {
+        setCount(c => Math.min(c + step, total))
+      }
+    }
+    const onScrollOrResize = () => { if (!raf) raf = requestAnimationFrame(check) }
+    // 初期＆内容変化時に直接判定（rAFのスロットリングに依存せず自動充填・デッドロック解消）
+    check()
+    window.addEventListener('scroll', onScrollOrResize, true)  // capture=内側コンテナも拾う
+    window.addEventListener('resize', onScrollOrResize)
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true)
+      window.removeEventListener('resize', onScrollOrResize)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [total, step, count])
+
+  return { count, ref, hasMore: count < total }
+}
+
 interface BubbleFeedLayoutProps {
   inBubbleArticles: GroupedArticle[]
   outBubbleArticles: GroupedArticle[]
@@ -34,39 +86,18 @@ export function BubbleFeedLayout({
   const onCategoryClick = (cat: string) => router.push(`/?category=${encodeURIComponent(cat)}`)
 
   // ---- リストモード（カテゴリ/日付フィルタ・冷スタート）の無限スクロール ----
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
-  const loaderRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [fallbackArticles])
+  const { count: visibleCount, ref: loaderRef } = useInfiniteReveal(
+    fallbackArticles.length, PAGE_SIZE, PAGE_SIZE, fallbackArticles
+  )
   const visibleFallback = useMemo(() => fallbackArticles.slice(0, visibleCount), [fallbackArticles, visibleCount])
-  useEffect(() => {
-    const el = loaderRef.current
-    if (!el) return
-    const ob = new IntersectionObserver(
-      e => { if (e[0].isIntersecting) setVisibleCount(c => Math.min(c + PAGE_SIZE, fallbackArticles.length)) },
-      { rootMargin: '600px' }
-    )
-    ob.observe(el)
-    return () => ob.disconnect()
-  }, [fallbackArticles.length])
 
   // ---- バブル外ゾーンの無限スクロール ----
   // 初期表示数は「視野の広さ」スライダー由来。以降スクロールで増える。
   const outInitial = Math.max(6, Math.round(OUT_PAGE * 2 * filterStrength))
-  const [outVisible, setOutVisible] = useState(outInitial)
-  const outLoaderRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { setOutVisible(outInitial) }, [outBubbleArticles, outInitial])
+  const { count: outVisible, ref: outLoaderRef, hasMore: outHasMore } = useInfiniteReveal(
+    outBubbleArticles.length, OUT_PAGE, outInitial, outBubbleArticles
+  )
   const visibleOut = useMemo(() => outBubbleArticles.slice(0, outVisible), [outBubbleArticles, outVisible])
-  const outHasMore = outVisible < outBubbleArticles.length
-  useEffect(() => {
-    const el = outLoaderRef.current
-    if (!el) return
-    const ob = new IntersectionObserver(
-      e => { if (e[0].isIntersecting) setOutVisible(c => Math.min(c + OUT_PAGE, outBubbleArticles.length)) },
-      { rootMargin: '600px' }
-    )
-    ob.observe(el)
-    return () => ob.disconnect()
-  }, [outBubbleArticles.length])
 
   // ---- バブルモード ----
   if (bubbleMode === 'vector') {
