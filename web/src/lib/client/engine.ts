@@ -287,6 +287,32 @@ export function filterArticles(
     return groupArticles(sorted)
 }
 
+// ---- ウォッチタグ ----
+
+/**
+ * ウォッチタグに合致する未読記事を新着順で返す（トップの専用枠用）。
+ * タイトル・概要・キーワードのいずれかにタグが含まれれば合致。
+ * ジャンル非表示より優先させたいので、呼び出し側は除外前の全記事を渡すこと。
+ */
+export function filterWatchedArticles(
+    articles: PackArticle[],
+    tags: string[],
+    seenIds: Set<string>,
+    dismissedIds: Set<string>
+): GroupedArticle[] {
+    if (tags.length === 0) return []
+    const hit = articles.filter(a => {
+        if (seenIds.has(a.id) || dismissedIds.has(a.id)) return false
+        return tags.some(t =>
+            (a.title || '').includes(t) ||
+            (a.summary || '').includes(t) ||
+            (a.category_minor || []).includes(t)
+        )
+    })
+    hit.sort((x, y) => (y.collected_at || '').localeCompare(x.collected_at || ''))
+    return groupArticles(hit.slice(0, 30).map(a => toArticle(a, 0, false)))
+}
+
 // ---- トピック別ビュー ----
 
 export interface TopicSection {
