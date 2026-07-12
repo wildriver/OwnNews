@@ -6,7 +6,8 @@
 // 推薦ベクトルの学習には使わない（明示的な意思表示は自動学習と混ぜない）。
 
 import { getKV, setKV } from './store'
-import { pushSettings } from './sync'
+import { pushSettings, getUserEmail } from './sync'
+import { createClient } from '@/lib/supabase/client'
 
 /** ウォッチタグ変更時に発火（フィードの専用枠・詳細ページのチップが再描画する） */
 export const WATCHED_EVENT = 'ownnews:watched'
@@ -21,6 +22,13 @@ export async function toggleWatchedTag(tag: string): Promise<{ tags: string[]; w
     const tags = has ? cur.filter(t => t !== tag) : [...cur, tag]
     await setKV('watched_tags', tags)
     pushSettings({ watchedTags: tags })   // 端末間同期（last-write-wins）
+    // 関心の変遷の歴史として購読/解除イベントを記録（fire-and-forget・本人のみRLS）
+    getUserEmail().then(email => {
+        if (!email) return
+        createClient().from('watched_tag_events')
+            .insert({ user_id: email, tag, action: has ? 'unwatch' : 'watch' })
+            .then(({ error }) => { if (error) console.warn('watch event log failed:', error.message) })
+    })
     if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent(WATCHED_EVENT, { detail: { tags } }))
     }

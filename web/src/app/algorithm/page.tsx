@@ -148,6 +148,7 @@ v = あなたの関心ベクトル / e = 記事のベクトル / α = 学習率`
                             <strong className="text-foreground">ウォッチタグ（📌）</strong>: 記事のキーワードをタップして購読すると、
                             そのタグを含む記事がトップの専用枠に必ず表示されます（もう一度タップで解除）。
                             「確実に見たい」の明示的な表明であり、<strong className="text-foreground">関心ベクトルの学習には使いません</strong>。
+                            購読・解除の履歴は「関心の変遷」としてあなたのアカウントに記録されます（本人のみ閲覧可）。
                         </li>
                         <li>
                             <strong className="text-foreground">トピック別ビュー</strong>: ジャンルごとのセクション表示。
