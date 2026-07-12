@@ -45,6 +45,7 @@ export interface RemoteState {
     excludedCategories: string[] | null
     vectorUpdatedAt: string | null
 }
+// watched_tags はKVへ直接反映するため RemoteState には含めない
 
 function parseVector(v: unknown): number[] | null {
     if (!v) return null
@@ -87,7 +88,7 @@ async function doPull(): Promise<RemoteState | null> {
         )
 
         const [{ data: profile }, { data: vecRow }, { data: remoteInts }] = await Promise.all([
-            supabase.from('user_profile').select('filter_strength, excluded_categories, updated_at').eq('user_id', email).maybeSingle(),
+            supabase.from('user_profile').select('filter_strength, excluded_categories, watched_tags, updated_at').eq('user_id', email).maybeSingle(),
             supabase.from('user_vectors').select('vector_m3, updated_at').eq('user_id', email).maybeSingle(),
             supabase.from('user_interactions')
                 .select('article_id, interaction_type, created_at, category, category_medium, title, link, dwell_seconds, scroll_depth')
@@ -164,12 +165,17 @@ async function doPull(): Promise<RemoteState | null> {
         if (applyRemoteSettings && typeof profile?.filter_strength === 'number') {
             await setKV('filter_strength', profile.filter_strength)
         }
+        if (applyRemoteSettings && Array.isArray(profile?.watched_tags)) {
+            await setKV('watched_tags', profile!.watched_tags)
+        }
         if (!applyRemoteSettings && localSts && remoteSts && localSts > remoteSts) {
             // ローカルが新しい → リモートを直す
             const fs = await getKV<number>('filter_strength')
+            const wt = await getKV<string[]>('watched_tags')
             pushSettings({
                 ...(typeof fs === 'number' ? { filterStrength: fs } : {}),
                 excludedCategories: Array.from(loadExcluded()),
+                ...(Array.isArray(wt) ? { watchedTags: wt } : {}),
             })
         }
 
@@ -262,7 +268,7 @@ export function pushVector(vector: number[], updatedAt: string): void {
 }
 
 /** 設定（強度・カテゴリON/OFF）をSupabaseへ。ローカルにも更新時刻を記録（last-write-wins用）。 */
-export function pushSettings(patch: { filterStrength?: number; excludedCategories?: string[] }): Promise<boolean> {
+export function pushSettings(patch: { filterStrength?: number; excludedCategories?: string[]; watchedTags?: string[] }): Promise<boolean> {
     const now = new Date().toISOString()
     // 変更の事実を先にローカルへ刻む（push失敗時もリモートの古い値で巻き戻らない）
     setKV('settings_updated_at', now)
@@ -272,6 +278,7 @@ export function pushSettings(patch: { filterStrength?: number; excludedCategorie
         const row: Record<string, unknown> = { user_id: email, updated_at: now }
         if (typeof patch.filterStrength === 'number') row.filter_strength = patch.filterStrength
         if (Array.isArray(patch.excludedCategories)) row.excluded_categories = patch.excludedCategories
+        if (Array.isArray(patch.watchedTags)) row.watched_tags = patch.watchedTags
         return supabase.from('user_profile').upsert(row, { onConflict: 'user_id' })
             .then(({ error }) => {
                 if (error) console.warn('pushSettings failed:', error.message)

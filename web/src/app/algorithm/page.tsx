@@ -145,6 +145,11 @@ v = あなたの関心ベクトル / e = 記事のベクトル / α = 学習率`
                         </li>
                         <li>閲覧済み・「興味なし」にした記事はフィードから消えます。</li>
                         <li>
+                            <strong className="text-foreground">ウォッチタグ（📌）</strong>: 記事のキーワードをタップして購読すると、
+                            そのタグを含む記事がトップの専用枠に必ず表示されます（もう一度タップで解除）。
+                            「確実に見たい」の明示的な表明であり、<strong className="text-foreground">関心ベクトルの学習には使いません</strong>。
+                        </li>
+                        <li>
                             <strong className="text-foreground">トピック別ビュー</strong>: ジャンルごとのセクション表示。
                             偏食予防のため、<strong className="text-foreground">セクションの並び順は訪問ごとにシャッフル</strong>され、
                             各セクションの1枠は注目順の上位圏外からランダムに選ばれます（🎲印のセレンディピティ枠）。

@@ -15,6 +15,7 @@ import { ClientNutrientRadar } from '@/components/client-nutrient-radar'
 import { KnowMorePanel } from '@/components/know-more-panel'
 import { ReactionBar } from '@/components/reaction-bar'
 import { BookmarkButton } from '@/components/bookmark-button'
+import { WatchTagChip } from '@/components/watch-tag-chip'
 import { getAllArticles } from '@/lib/client/store'
 import { PackArticle } from '@/lib/client/types'
 import { decodeEmb, cosine, GROUPING_THRESHOLD } from '@/lib/client/engine'
@@ -233,10 +234,9 @@ export function ArticleDetail({ id }: { id: string }) {
                             <div className="flex flex-wrap gap-1.5 items-center">
                                 <Tag className="w-3.5 h-3.5 text-muted-foreground" />
                                 {keywords.map((kw) => (
-                                    <span key={kw} className="inline-block bg-card border border-border px-2 py-0.5 rounded-full text-[11px] text-muted-foreground">
-                                        {kw}
-                                    </span>
+                                    <WatchTagChip key={kw} tag={kw} />
                                 ))}
+                                <span className="text-[10px] text-muted-foreground/70">タップでウォッチ（トップに常時表示）</span>
                             </div>
                         )}
                     </div>

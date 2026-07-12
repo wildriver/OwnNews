@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { BubbleFeedLayout } from '@/components/bubble-feed-layout'
 import { TopicFeed } from '@/components/topic-feed'
+import { WatchedSection } from '@/components/watched-section'
 import { LocalFilterSlider } from '@/components/local-filter-slider'
 import { TextSizeControl } from '@/components/text-size-control'
 import { CategoryFilterBar, loadExcluded, saveExcluded } from '@/components/category-filter-bar'
@@ -290,6 +291,16 @@ export function LocalFeed() {
                         この内容で開始
                     </Button>
                 </div>
+            )}
+
+            {/* ウォッチ中（タグ購読）: 確実に見たい記事の専用枠。ジャンル非表示より優先 */}
+            {articles.length > 0 && !isFilterMode && (
+                <WatchedSection
+                    articles={articles}
+                    seenIds={seenIds}
+                    dismissedIds={dismissedIds}
+                    onCategoryClick={(cat) => router.push(`/?category=${encodeURIComponent(cat)}`)}
+                />
             )}
 
             {articles.length > 0 && (
