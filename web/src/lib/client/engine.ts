@@ -272,11 +272,16 @@ export function filterArticles(
     if (opts.category) {
         list = list.filter(a => (a.category || '').includes(opts.category!))
     }
+    // collected_at はUTCオフセット（+00:00）、フィルタ日付はJST。
+    // 文字列比較だとオフセット差9時間分ズレる（JST 0〜9時収集の記事が前日扱いになり
+    // 「今日」が0件になる）ため、必ずエポックに直して比較する。
     if (opts.dateFrom) {
-        list = list.filter(a => (a.collected_at || '') >= `${opts.dateFrom}T00:00:00+09:00`)
+        const fromMs = Date.parse(`${opts.dateFrom}T00:00:00+09:00`)
+        list = list.filter(a => Date.parse(a.collected_at || '') >= fromMs)
     }
     if (opts.dateTo) {
-        list = list.filter(a => (a.collected_at || '') <= `${opts.dateTo}T23:59:59+09:00`)
+        const toMs = Date.parse(`${opts.dateTo}T00:00:00+09:00`) + 24 * 60 * 60 * 1000
+        list = list.filter(a => Date.parse(a.collected_at || '') < toMs)
     }
     // カテゴリ指定時はそのジャンル内を新しい順（ブラウジング用）。
     // 未指定（冷スタート等）は「みんなが注目している順」をジャンル均等に散らす。
