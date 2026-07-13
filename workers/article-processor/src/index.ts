@@ -456,6 +456,10 @@ const RETENTION_DAYS = 30
 /** 1回の実行で削除する最大チャンク数（200件×10=2000件。溜まった過去分も数日で消化できる） */
 const RETENTION_DELETE_CHUNK = 200
 const RETENTION_DELETE_MAX_CHUNKS = 10
+/** アーカイブ取得のページサイズ。PostgRESTは1リクエスト最大1000行に黙って切り詰める
+ *  （これを知らず .limit(2000) で200件を取りこぼし削除した事故が2026-07-13にあった）ため、
+ *  必ず1000未満のページでスライス内をページングする */
+const ARCHIVE_PAGE = 500
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000
 
 /** ISO時刻文字列 → JSTの日付（YYYY-MM-DD） */
@@ -484,27 +488,61 @@ async function archiveAndPruneOldest(supabase: SupabaseClient, bucket: R2Bucket)
     const fromIso = new Date(fromMs).toISOString()
     const toIso = new Date(fromMs + 24 * 60 * 60 * 1000).toISOString()
 
-    // 1. アーカイブ（未作成のときだけ）。6時間スライスでメタデータを収集
+    // 0. その日の正確な行数（削除前の完全性チェックの基準）
+    const { count: dayCount, error: cErr } = await supabase
+        .from('articles')
+        .select('id', { count: 'exact', head: true })
+        .gte('collected_at', fromIso)
+        .lt('collected_at', toIso)
+    if (cErr || dayCount == null) {
+        console.error(`Archive count query error (${day}):`, cErr)
+        return
+    }
+    if (dayCount === 0) return
+
+    // 1. アーカイブ。既存アーカイブがあっても件数が合わなければ作り直す
+    //    （PostgRESTは1リクエスト最大1000行に切り詰めるため、.limit(2000)が
+    //    黙って欠けるバグがあった。スライス内でもページングして全件取る）
     const key = `archive/daily/${day}.json`
-    if (!(await bucket.head(key))) {
+    let archiveOk = false
+    const existing = await bucket.get(key)
+    if (existing) {
+        try {
+            const parsed = JSON.parse(await existing.text()) as { count?: number }
+            archiveOk = parsed.count === dayCount
+            if (!archiveOk) console.warn(`Archive ${day} incomplete (${parsed.count}/${dayCount}) — rebuilding`)
+        } catch { /* 壊れたアーカイブは作り直す */ }
+    }
+    if (!archiveOk) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rows: any[] = []
         for (let k = 0; k < 4; k++) {
             const sBot = new Date(fromMs + k * 6 * 60 * 60 * 1000).toISOString()
             const sTop = new Date(fromMs + (k + 1) * 6 * 60 * 60 * 1000).toISOString()
-            const { data: page, error } = await supabase
-                .from('articles')
-                .select(PACK_META_COLUMNS)
-                .gte('collected_at', sBot)
-                .lt('collected_at', sTop)
-                .order('collected_at', { ascending: true })
-                .limit(2000)
-            if (error) {
-                // アーカイブが完成しないまま削除に進まないよう、この実行は打ち切る
-                console.error(`Archive slice error (${day} k=${k}):`, error)
-                return
+            // PostgRESTのmax_rows(1000)未満のページでスライス内を全件回収
+            for (let off = 0; ; off += ARCHIVE_PAGE) {
+                const { data: page, error } = await supabase
+                    .from('articles')
+                    .select(PACK_META_COLUMNS)
+                    .gte('collected_at', sBot)
+                    .lt('collected_at', sTop)
+                    .order('collected_at', { ascending: true })
+                    .order('id', { ascending: true })   // 同時刻バッチ内の順序を安定させる
+                    .range(off, off + ARCHIVE_PAGE - 1)
+                if (error) {
+                    // アーカイブが完成しないまま削除に進まないよう、この実行は打ち切る
+                    console.error(`Archive slice error (${day} k=${k} off=${off}):`, error)
+                    return
+                }
+                if (!page || page.length === 0) break
+                rows.push(...page)
+                if (page.length < ARCHIVE_PAGE) break
             }
-            if (page) rows.push(...page)
+        }
+        // 完全性チェック: 全件取れていなければ削除に進まない
+        if (rows.length !== dayCount) {
+            console.error(`Archive incomplete for ${day}: got ${rows.length}/${dayCount} — skip delete`)
+            return
         }
         // 量子化済み埋め込みは当日の日次パックスナップショットにあれば添える
         // （無くても、埋め込みはタイトル+概要からBGE-M3で再計算可能）
