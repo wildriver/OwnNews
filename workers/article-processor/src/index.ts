@@ -433,35 +433,75 @@ async function computeHotKeywords(
     return picked
 }
 
-/** パッククエリの1ページあたり件数。
- *  800件を1文で取ると埋め込み列（1024次元×約15KB）の読み出しでSupabaseの
- *  statement timeout（約8秒）を超える（記事テーブルの成長で2026-07-13に顕在化、
- *  エラー57014でパックが更新されなくなった）。1文=1タイムアウト枠になるよう分割する。 */
-const PACK_QUERY_PAGE = 100
+/** メタデータクエリの1ページあたり件数（埋め込み列を含まないので軽い） */
+const PACK_META_PAGE = 200
+/** 埋め込み取得の1文あたり件数。
+ *  埋め込み列（1024次元×約15KB）はテーブル肥大化により、100件の一括読み出しでも
+ *  Supabaseの statement timeout（57014）を超えるようになった（2026-07-13の障害）。
+ *  そのため埋め込みは「旧パックに無い記事」だけを少数ずつ取得する。 */
+const PACK_EMB_CHUNK = 20
 
 async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket): Promise<void> {
+    // 1. メタデータのみ取得（embedding_m3はフィルタにだけ使い、列としては読まない）。
+    //    埋め込み込みの一括読み出しはTOAST読み出しがタイムアウトするため、
+    //    埋め込みは旧パックからの再利用を基本とする（増分方式）。
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any[] = []
-    for (let off = 0; off < PACK_SIZE; off += PACK_QUERY_PAGE) {
+    for (let off = 0; off < PACK_SIZE; off += PACK_META_PAGE) {
         const { data: page, error } = await supabase
             .from('articles')
-            .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at, embedding_m3')
+            .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at')
             .not('embedding_m3', 'is', null)
             .order('collected_at', { ascending: false })
-            .range(off, off + PACK_QUERY_PAGE - 1)
+            .range(off, off + PACK_META_PAGE - 1)
 
         if (error) {
-            console.error(`Pack query error (page ${off / PACK_QUERY_PAGE}):`, error)
+            console.error(`Pack meta query error (page ${off / PACK_META_PAGE}):`, error)
             // 先頭ページから失敗したら旧パックを維持して撤退。
-            // 途中ページの失敗は、そこまでの新しい記事だけでパックを更新する
-            // （古い側の記事は既存クライアントには配信済み。停止より縮小配信を優先）
+            // 途中ページの失敗は、そこまでの新しい記事だけで縮小パックを作る
             if (data.length === 0) return
             break
         }
         if (!page || page.length === 0) break
         data.push(...page)
-        if (page.length < PACK_QUERY_PAGE) break
+        if (page.length < PACK_META_PAGE) break
     }
+    if (data.length === 0) return
+
+    // 2. 旧パックから量子化済み埋め込みを回収（id → base64）。R2はタイムアウトしない
+    const embMap = new Map<string, string>()
+    try {
+        const oldObj = await bucket.get('pack/latest.json')
+        if (oldObj) {
+            const old = JSON.parse(await oldObj.text()) as { articles?: { id: string; emb?: string | null }[] }
+            for (const a of old.articles || []) {
+                if (a.emb) embMap.set(a.id, a.emb)
+            }
+        }
+    } catch (e) {
+        console.warn('old pack read failed (falling back to DB for all embeddings):', e)
+    }
+
+    // 3. 旧パックに無い記事（新規処理分）の埋め込みだけをDBから少数ずつ取得
+    const missingIds = data.filter(a => !embMap.has(a.id)).map(a => a.id)
+    for (let i = 0; i < missingIds.length; i += PACK_EMB_CHUNK) {
+        const chunk = missingIds.slice(i, i + PACK_EMB_CHUNK)
+        const { data: rows, error } = await supabase
+            .from('articles')
+            .select('id, embedding_m3')
+            .in('id', chunk)
+        if (error) {
+            // 取れなかった分は emb: null で配信し、次回の実行で再取得を試みる
+            console.error(`Pack embedding query error (chunk ${i / PACK_EMB_CHUNK}):`, error)
+            continue
+        }
+        for (const r of rows || []) {
+            const vec = parseVector(r.embedding_m3)
+            const b64 = vec ? quantizeToBase64(vec) : null
+            if (b64) embMap.set(r.id, b64)
+        }
+    }
+    console.log(`Pack build: meta=${data.length}, reused emb=${data.length - missingIds.length}, fetched emb=${missingIds.length}`)
 
     // ソーシャルシグナル（全ユーザーの閲覧数・リアクション集計）を焼き込む。
     // クライアントの「バブルの外」が「自分以外の人がよく読む・反応が多い記事」を
@@ -479,7 +519,6 @@ async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket)
 
     let latest = ''
     const articles = (data || []).map((a) => {
-        const vec = parseVector(a.embedding_m3)
         if (a.collected_at > latest) latest = a.collected_at
         const social = socialMap.get(a.id)
         return {
@@ -503,7 +542,7 @@ async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket)
             emotion_score: a.emotion_score,
             immediacy_score: a.immediacy_score,
             collected_at: a.collected_at,
-            emb: vec ? quantizeToBase64(vec) : null,
+            emb: embMap.get(a.id) || null,
         }
     })
 
