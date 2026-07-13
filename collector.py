@@ -7,6 +7,7 @@ Fetches RSS feeds and saves raw article data to Supabase.
 import hashlib
 import os
 import re
+import time
 
 import feedparser
 import requests
@@ -15,6 +16,18 @@ from supabase import create_client
 # --- Config ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+
+# 素性を明示したUser-Agent（協力元CEEKへの礼儀・問い合わせ先を含める）
+FEED_AGENT = (
+    "OwnNewsBot/1.0 (research project; "
+    "+https://ownnews-web.pages.dev; contact: yutaka@arakawa-lab.com)"
+)
+# フィード間の待機（秒）。CEEKは短時間の連続リクエストをスロットリングして
+# 空(0件)を返すことがある。間隔を空けて取りこぼしを防ぎ、負荷もかけない。
+FEED_DELAY_SEC = 3.0
+# 空(0件)が返ったときの追加リトライ回数と待機（スロットリングからの回復用）
+EMPTY_RETRIES = 2
+EMPTY_RETRY_WAIT_SEC = 6.0
 
 # フィード定義:
 #   url      : RSS/AtomフィードURL
@@ -57,8 +70,19 @@ def _article_id(link: str) -> str:
 
 
 def fetch_feed(feed_def: dict) -> list[dict]:
-    """RSSフィードをパースし、記事リストを返す。"""
-    feed = feedparser.parse(feed_def["url"])
+    """RSSフィードをパースし、記事リストを返す。
+
+    CEEKは連続アクセスで空(0件)を返すことがあるため、0件のときは
+    間隔を空けて数回リトライし、スロットリングからの回復を試みる。
+    """
+    feed = feedparser.parse(feed_def["url"], agent=FEED_AGENT)
+    for _ in range(EMPTY_RETRIES):
+        if feed.entries:
+            break
+        # 0件 = スロットリングの可能性。少し待って取り直す
+        time.sleep(EMPTY_RETRY_WAIT_SEC)
+        feed = feedparser.parse(feed_def["url"], agent=FEED_AGENT)
+
     articles = []
     for entry in feed.entries:
         link = entry.get("link", "")
@@ -132,15 +156,29 @@ def collect() -> int:
 
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    # 全フィードから記事を収集（フィード間の重複はリンクで排除）
+    # 全フィードから記事を収集（フィード間の重複はリンクで排除）。
+    # フィード間に待機を入れてスロットリングを避ける。各フィードの取得件数は
+    # ログに残す（どのカテゴリが痩せているかを後から確認できるように）。
     fetched: dict[str, dict] = {}
-    for feed_def in FEEDS:
+    empty_feeds: list[str] = []
+    for idx, feed_def in enumerate(FEEDS):
+        if idx > 0:
+            time.sleep(FEED_DELAY_SEC)
         try:
-            for a in fetch_feed(feed_def):
+            arts = fetch_feed(feed_def)
+            for a in arts:
                 if a["link"] not in fetched:
                     fetched[a["link"]] = a
+            label = feed_def["url"].split("category_id=")[-1].split("&")[0]
+            print(f"  feed {feed_def['source']:10s} {label:16s} -> {len(arts):3d} entries")
+            if not arts:
+                empty_feeds.append(f"{feed_def['source']}:{label}")
         except Exception as e:
             print(f"Feed error ({feed_def['url']}): {e}")
+            empty_feeds.append(f"{feed_def['source']}:{feed_def['url']}")
+
+    if empty_feeds:
+        print(f"Empty feeds ({len(empty_feeds)}): {', '.join(empty_feeds)}")
 
     if not fetched:
         print("No articles fetched.")
