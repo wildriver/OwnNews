@@ -433,17 +433,34 @@ async function computeHotKeywords(
     return picked
 }
 
-async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket): Promise<void> {
-    const { data, error } = await supabase
-        .from('articles')
-        .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at, embedding_m3')
-        .not('embedding_m3', 'is', null)
-        .order('collected_at', { ascending: false })
-        .limit(PACK_SIZE)
+/** パッククエリの1ページあたり件数。
+ *  800件を1文で取ると埋め込み列（1024次元×約15KB）の読み出しでSupabaseの
+ *  statement timeout（約8秒）を超える（記事テーブルの成長で2026-07-13に顕在化、
+ *  エラー57014でパックが更新されなくなった）。1文=1タイムアウト枠になるよう分割する。 */
+const PACK_QUERY_PAGE = 100
 
-    if (error) {
-        console.error('Pack query error:', error)
-        return
+async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any[] = []
+    for (let off = 0; off < PACK_SIZE; off += PACK_QUERY_PAGE) {
+        const { data: page, error } = await supabase
+            .from('articles')
+            .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at, embedding_m3')
+            .not('embedding_m3', 'is', null)
+            .order('collected_at', { ascending: false })
+            .range(off, off + PACK_QUERY_PAGE - 1)
+
+        if (error) {
+            console.error(`Pack query error (page ${off / PACK_QUERY_PAGE}):`, error)
+            // 先頭ページから失敗したら旧パックを維持して撤退。
+            // 途中ページの失敗は、そこまでの新しい記事だけでパックを更新する
+            // （古い側の記事は既存クライアントには配信済み。停止より縮小配信を優先）
+            if (data.length === 0) return
+            break
+        }
+        if (!page || page.length === 0) break
+        data.push(...page)
+        if (page.length < PACK_QUERY_PAGE) break
     }
 
     // ソーシャルシグナル（全ユーザーの閲覧数・リアクション集計）を焼き込む。
