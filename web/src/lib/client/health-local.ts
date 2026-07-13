@@ -69,9 +69,10 @@ export function computeHealthStats(all: LocalInteraction[], period: Period = '30
 
     const keywordMap: Record<string, number> = {}
     allKeywords.forEach(kw => { keywordMap[kw] = (keywordMap[kw] || 0) + 1 })
+    // タグクラウド表示のため上位30件まで返す（頻度で大きさを変えて見せる）
     const topKeywords = Object.entries(keywordMap)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
+        .slice(0, 30)
         .map(([keyword, count]) => ({ keyword, count }))
 
     const catTotal = allCats.length
