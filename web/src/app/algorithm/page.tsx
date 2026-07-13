@@ -64,7 +64,7 @@ export default function AlgorithmPage() {
                             意味が近い記事ほど、ベクトルの向きが近くなります。
                         </li>
                         <li>
-                            AI（Llama系の言語モデル）が各記事に<strong className="text-foreground">「栄養素」5指標</strong>
+                            AI（gpt-oss-120b等のオープンな大規模言語モデル）が各記事に<strong className="text-foreground">「栄養素」5指標</strong>
                             （事実・背景・視点・感情・速報、各0〜100）と中分類・キーワードを付与します。
                         </li>
                         <li>

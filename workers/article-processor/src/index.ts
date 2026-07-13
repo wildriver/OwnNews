@@ -9,6 +9,10 @@ export interface Env {
     PACK_BUCKET?: R2Bucket
     /** Workers AI が失敗/枯渇した際のスコアリング用フォールバック（任意） */
     GROQ_API_KEY?: string
+    /** さくらのAI Engine（無償3,000req/月）。設定時は解析の主力になる */
+    SAKURA_API_KEY?: string
+    /** さくらで使うモデル（wrangler.tomlのvarsで切替可。既定: gpt-oss-120b） */
+    SAKURA_MODEL?: string
     /** Web Push (VAPID)。設定時のみ日次プッシュを送る */
     VAPID_PUBLIC_KEY?: string
     VAPID_PRIVATE_KEY?: string
@@ -208,21 +212,30 @@ async function analyzeWithWorkersAI(env: Env, articles: Article[]): Promise<Reco
  * 1チャンク失敗しても他チャンクには影響しない。
  */
 const ANALYSIS_SUBBATCH = 8
+/** さくら（120B・リクエスト数制）使用時のサブバッチ。大型モデルは長い構造化出力に耐えるので
+ *  大きめにして月3,000リクエスト枠を節約する。JSON解析失敗が増えるようなら12→8に戻す。 */
+const ANALYSIS_SUBBATCH_SAKURA = 12
 
 async function analyzeArticles(env: Env, articles: Article[]): Promise<Record<string, CategorizationResult>> {
     const result: Record<string, CategorizationResult> = {}
-    for (let i = 0; i < articles.length; i += ANALYSIS_SUBBATCH) {
-        const chunk = articles.slice(i, i + ANALYSIS_SUBBATCH)
+    const subbatch = env.SAKURA_API_KEY ? ANALYSIS_SUBBATCH_SAKURA : ANALYSIS_SUBBATCH
+    for (let i = 0; i < articles.length; i += subbatch) {
+        const chunk = articles.slice(i, i + subbatch)
         let map: Record<string, CategorizationResult> = {}
-        // 主力はGroqの70B（日本語の分類・キーワード品質が8Bより大幅に良い）。
-        // Workers AIの8Bは無料枠は潤沢だが中国語混じりの幻覚が出るためフォールバックに降格。
+        // 解析チェーン: さくら gpt-oss-120b（主力・リクエスト数制なのでバッチ大きめ）
+        //   → Groq 70B → Workers AI 8B。どの段でも同じ検証フィルタが効く。
         try {
-            if (!env.GROQ_API_KEY) throw new Error('GROQ_API_KEY not set')
-            map = await analyzeWithGroq(env.GROQ_API_KEY, chunk)
-            if (Object.keys(map).length === 0) throw new Error('Groq returned no parseable results')
-        } catch (e) {
-            console.error(`Groq(70B) analysis failed for chunk ${i / ANALYSIS_SUBBATCH}:`, e)
-            {
+            if (!env.SAKURA_API_KEY) throw new Error('SAKURA_API_KEY not set')
+            map = await analyzeWithSakura(env.SAKURA_API_KEY, env.SAKURA_MODEL || 'gpt-oss-120b', chunk)
+            if (Object.keys(map).length === 0) throw new Error('Sakura returned no parseable results')
+        } catch (se) {
+            if (env.SAKURA_API_KEY) console.error(`Sakura analysis failed for chunk ${i / subbatch}:`, se)
+            try {
+                if (!env.GROQ_API_KEY) throw new Error('GROQ_API_KEY not set')
+                map = await analyzeWithGroq(env.GROQ_API_KEY, chunk)
+                if (Object.keys(map).length === 0) throw new Error('Groq returned no parseable results')
+            } catch (e) {
+                console.error(`Groq(70B) analysis failed for chunk ${i / subbatch}:`, e)
                 try {
                     map = await analyzeWithWorkersAI(env, chunk)
                 } catch (ge) {
@@ -237,6 +250,30 @@ async function analyzeArticles(env: Env, articles: Article[]): Promise<Record<st
         }
     }
     return result
+}
+
+/** さくらのAI Engine（OpenAI互換・無償3,000req/月）。
+ *  リクエスト数課金なのでバッチを大きめ(12件)にして枠を節約する。 */
+async function analyzeWithSakura(apiKey: string, model: string, articles: Article[]): Promise<Record<string, CategorizationResult>> {
+    const resp = await fetch('https://api.ai.sakura.ad.jp/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            model,
+            messages: [
+                { role: 'system', content: 'You are a precise JSON output machine.' },
+                { role: 'user', content: buildAnalysisPrompt(articles) },
+            ],
+            max_tokens: 4096,
+            temperature: 0.2,
+        }),
+    })
+    if (!resp.ok) throw new Error(`Sakura API ${resp.status}: ${(await resp.text()).slice(0, 200)}`)
+    const data = await resp.json() as { choices?: { message?: { content?: string } }[] }
+    return parseAnalysisResponse(data?.choices?.[0]?.message?.content)
 }
 
 /** Workers AI のNeurons枯渇・障害時のフォールバック（Groq無料枠） */
