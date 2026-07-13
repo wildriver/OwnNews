@@ -7,7 +7,8 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { getWatchedTags, toggleWatchedTag, WATCHED_EVENT } from '@/lib/client/watched-tags'
 
-export function WatchTagChip({ tag }: { tag: string }) {
+// action=true は検索結果ヘッダー用: タグ名ではなく「ウォッチタグに追加」の動詞ラベルで表示する
+export function WatchTagChip({ tag, action = false }: { tag: string; action?: boolean }) {
     const [watched, setWatched] = useState(false)
 
     useEffect(() => {
@@ -34,7 +35,9 @@ export function WatchTagChip({ tag }: { tag: string }) {
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'}`}
         >
-            {watched ? '📌 ' : ''}{tag}
+            {action
+                ? (watched ? `📌 「${tag}」をウォッチ中` : `＋「${tag}」をウォッチタグに追加`)
+                : `${watched ? '📌 ' : ''}${tag}`}
         </button>
     )
 }
