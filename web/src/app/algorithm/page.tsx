@@ -72,6 +72,11 @@ export default function AlgorithmPage() {
                             全ユーザー共通のデータとして配信します。パックには記事ごとの
                             匿名の閲覧数・リアクション集計も焼き込まれます。
                         </li>
+                        <li>
+                            記事データベースに保持するのは<strong className="text-foreground">直近30日分</strong>のみです。
+                            それより古い記事の見出し・解析結果は研究用アーカイブに移し、
+                            データベースからは削除します（記事の原本は各報道機関・CEEK.JP NEWSにあります）。
+                        </li>
                     </ul>
                 </section>
 

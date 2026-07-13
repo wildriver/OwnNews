@@ -446,6 +446,108 @@ const PACK_META_COLUMNS = 'id, title, link, summary, published, category, catego
  *  そのため埋め込みは「旧パックに無い記事」だけを少数ずつ取得する。 */
 const PACK_EMB_CHUNK = 20
 
+// ---- 研究用アーカイブ + retention ----
+// 記事原本はCEEK.JP NEWS側に存在するため、アプリのDBは直近分だけでよい。
+// 研究用の全データはR2に日次JSONで退避してから、DBの古い行を削除する。
+// （テーブル肥大化による statement timeout 障害（2026-07-13）の根本対策）
+
+/** DBに残す日数。これより古い「JST日」を丸ごとアーカイブ→削除する */
+const RETENTION_DAYS = 30
+/** 1回の実行で削除する最大チャンク数（200件×10=2000件。溜まった過去分も数日で消化できる） */
+const RETENTION_DELETE_CHUNK = 200
+const RETENTION_DELETE_MAX_CHUNKS = 10
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000
+
+/** ISO時刻文字列 → JSTの日付（YYYY-MM-DD） */
+function jstDayOf(iso: string): string {
+    return new Date(Date.parse(iso) + JST_OFFSET_MS).toISOString().slice(0, 10)
+}
+
+/**
+ * 最古の「JST日」を1日分アーカイブしてDBから削除する（1実行あたり最大1日）。
+ * cronは1日約30回走るので、過去の未整理分も数日で30日分まで縮む。
+ * アーカイブ（R2書き込み）が確認できるまでは絶対に削除しない。
+ */
+async function archiveAndPruneOldest(supabase: SupabaseClient, bucket: R2Bucket): Promise<void> {
+    const { data: oldest, error: oErr } = await supabase
+        .from('articles')
+        .select('collected_at')
+        .order('collected_at', { ascending: true })
+        .limit(1)
+    if (oErr || !oldest || oldest.length === 0) return
+
+    const day = jstDayOf(oldest[0].collected_at)
+    const cutoffDay = jstDayOf(new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString())
+    if (day >= cutoffDay) return   // 最古の日がまだ保持期間内
+
+    const fromMs = Date.parse(`${day}T00:00:00+09:00`)
+    const fromIso = new Date(fromMs).toISOString()
+    const toIso = new Date(fromMs + 24 * 60 * 60 * 1000).toISOString()
+
+    // 1. アーカイブ（未作成のときだけ）。6時間スライスでメタデータを収集
+    const key = `archive/daily/${day}.json`
+    if (!(await bucket.head(key))) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rows: any[] = []
+        for (let k = 0; k < 4; k++) {
+            const sBot = new Date(fromMs + k * 6 * 60 * 60 * 1000).toISOString()
+            const sTop = new Date(fromMs + (k + 1) * 6 * 60 * 60 * 1000).toISOString()
+            const { data: page, error } = await supabase
+                .from('articles')
+                .select(PACK_META_COLUMNS)
+                .gte('collected_at', sBot)
+                .lt('collected_at', sTop)
+                .order('collected_at', { ascending: true })
+                .limit(2000)
+            if (error) {
+                // アーカイブが完成しないまま削除に進まないよう、この実行は打ち切る
+                console.error(`Archive slice error (${day} k=${k}):`, error)
+                return
+            }
+            if (page) rows.push(...page)
+        }
+        // 量子化済み埋め込みは当日の日次パックスナップショットにあれば添える
+        // （無くても、埋め込みはタイトル+概要からBGE-M3で再計算可能）
+        const embMap = new Map<string, string>()
+        try {
+            const snap = await bucket.get(`pack/daily/${day}.json`)
+            if (snap) {
+                const old = JSON.parse(await snap.text()) as { articles?: { id: string; emb?: string | null }[] }
+                for (const a of old.articles || []) if (a.emb) embMap.set(a.id, a.emb)
+            }
+        } catch { /* スナップショットが無い日はメタデータのみ */ }
+
+        const body = JSON.stringify({
+            day,
+            count: rows.length,
+            archived_at: new Date().toISOString(),
+            articles: rows.map(r => ({ ...r, ...(embMap.has(r.id) ? { emb: embMap.get(r.id) } : {}) })),
+        })
+        await bucket.put(key, body, { httpMetadata: { contentType: 'application/json' } })
+        console.log(`Archived ${day}: ${rows.length} articles (${(body.length / 1024).toFixed(0)} KB)`)
+    }
+
+    // 2. アーカイブ済みの日をチャンク削除（1文=1タイムアウト枠）
+    let deleted = 0
+    for (let i = 0; i < RETENTION_DELETE_MAX_CHUNKS; i++) {
+        const { data: ids, error } = await supabase
+            .from('articles')
+            .select('id')
+            .gte('collected_at', fromIso)
+            .lt('collected_at', toIso)
+            .limit(RETENTION_DELETE_CHUNK)
+        if (error || !ids || ids.length === 0) break
+        const { error: dErr } = await supabase.from('articles').delete().in('id', ids.map(r => r.id))
+        if (dErr) {
+            console.error('Retention delete error:', dErr)
+            break
+        }
+        deleted += ids.length
+        if (ids.length < RETENTION_DELETE_CHUNK) break
+    }
+    if (deleted > 0) console.log(`Retention: deleted ${deleted} articles of ${day}`)
+}
+
 async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket): Promise<void> {
     // 1. メタデータのみ取得（embedding_m3はフィルタにだけ使い、列としては読まない）。
     //    埋め込み込みの一括読み出しはTOAST読み出しがタイムアウトするため、
@@ -751,6 +853,13 @@ export default {
         //    event.cron が朝枠のときだけ実行。R2の日付マーカーで多重送信を防ぐ。
         if (event.cron === '*/10 21,22 * * *') {
             ctx.waitUntil(sendDailyPushOnce(env, supabase))
+        }
+
+        // 7. 研究用アーカイブ + retention（30日より古い日をR2へ退避してDBから削除）
+        //    DBは「直近のホットデータ専用」に保ち、テーブル肥大化による
+        //    statement timeout 障害（2026-07-13）の根本原因を断つ。
+        if (env.PACK_BUCKET) {
+            ctx.waitUntil(archiveAndPruneOldest(supabase, env.PACK_BUCKET))
         }
     }
 }
