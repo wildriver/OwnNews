@@ -46,11 +46,14 @@ export async function recordInteraction(articleId: string, type: InteractionType
         }
         await putInteraction(interaction)
 
-        // ベクトル学習: deep_dive（深掘り=強い興味）と not_interested（減算）のみ即時反映。
-        // view（クリックして開いただけ）はここでは反映せず、閲覧時間 recordDwell に委ねる。
-        if (article?.emb && type !== 'view') {
+        // ベクトル学習: deep_dive（深掘り=強い興味）・not_interested（減算）・bookmark のみ即時反映。
+        // view（クリックして開いただけ）は recordDwell に委ねる。
+        // know_x / know_hatena（もっと知るでX・はてブを開いた記録）は
+        // 「あえて推薦に使わない」方針のため、記録・同期はしても学習は発火させない。
+        const LEARNING_TYPES: InteractionType[] = ['deep_dive', 'not_interested', 'bookmark']
+        if (article?.emb && LEARNING_TYPES.includes(type)) {
             const current = (await getKV<number[]>('user_vector')) || null
-            const next = updateVector(current, article.emb, type)
+            const next = updateVector(current, article.emb, type as 'deep_dive' | 'not_interested' | 'bookmark')
             await applyVector(article.emb, next)
         }
 

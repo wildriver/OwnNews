@@ -95,6 +95,11 @@ export function KnowMorePanel({ articleId, title, link }: { articleId: string; t
     const prompt = buildPrompt(title, link)
     const q = encodeURIComponent(prompt)
     const markDeepDive = () => { recordInteraction(articleId, 'deep_dive') }
+    // Xで検索/投稿・はてブ「すべて見る」を開いた記録（学習には使わない）。
+    // はてブコメントのインライン表示は記事を開くだけで出るため記録しない
+    // （自動表示を「利用」として数えると指標が閲覧数と同じになってしまう）。
+    const markKnowX = () => { recordInteraction(articleId, 'know_x') }
+    const markKnowHatena = () => { recordInteraction(articleId, 'know_hatena') }
 
     const onCopy = async () => {
         markDeepDive()
@@ -112,6 +117,7 @@ export function KnowMorePanel({ articleId, title, link }: { articleId: string; t
     const xPostApp = `twitter://post?message=${encodeURIComponent(`${title}\n${link}`)}`
 
     const onXClick = (appUrl: string) => (e: React.MouseEvent) => {
+        markKnowX()
         if (!isMobileDevice()) return
         e.preventDefault()
         openInXApp(appUrl, (e.currentTarget as HTMLAnchorElement).href)
@@ -195,6 +201,7 @@ export function KnowMorePanel({ articleId, title, link }: { articleId: string; t
                                 href={hatena.entry_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
+                                onClick={markKnowHatena}
                                 className="ml-auto text-[11px] text-muted-foreground hover:text-primary inline-flex items-center gap-0.5"
                             >
                                 すべて見る<ExternalLink className="w-3 h-3" />

@@ -25,7 +25,9 @@ export interface PackArticle {
     reactions?: Record<string, number>
 }
 
-export type InteractionType = 'view' | 'deep_dive' | 'not_interested' | 'bookmark'
+// know_x / know_hatena は「もっと知る」でX・はてブを開いた記録。
+// 記録・同期はするが、関心ベクトルの学習には使わない（deep_dive とは別扱い）。
+export type InteractionType = 'view' | 'deep_dive' | 'not_interested' | 'bookmark' | 'know_x' | 'know_hatena'
 
 export interface LocalInteraction {
     article_id: string

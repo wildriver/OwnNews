@@ -18,6 +18,12 @@ export interface AdminSummary {
     push_subscribers: number
     avg_filter_strength: number | null
     avg_dwell_sec: number | null
+    // もっと知る（AI深掘り／X／はてブ）と検索利用。RPC未適用時は undefined。
+    know_ai?: number
+    know_x?: number
+    know_hatena?: number
+    search_7d?: number
+    search_30d?: number
 }
 
 export interface DailyActivity {
@@ -45,12 +51,21 @@ export interface UserDetail {
     last_active: string | null
     top_category: string | null
     top_ratio: number | null
+    // 追加（RPC未適用時は undefined）
+    know_more?: number
+    searches_30d?: number
+    watched_tags_count?: number
 }
 
 export interface UserCategoryCell {
     user_id: string
     category: string
     views: number
+}
+
+export interface WatchedTagAgg {
+    tag: string
+    subscribers: number
 }
 
 export interface AdminData {
@@ -61,6 +76,8 @@ export interface AdminData {
     users: UserDetail[]
     /** ユーザー×ジャンルの閲覧行列。RPC未適用（migrate_admin_viz.sql）なら null。 */
     matrix: UserCategoryCell[] | null
+    /** 関心キーワード（ウォッチタグ）→購読者数。RPC未適用なら null。 */
+    watchedTags: WatchedTagAgg[] | null
 }
 
 /**
@@ -91,17 +108,18 @@ export async function checkIsAdmin(): Promise<boolean> {
  */
 export async function fetchAdminData(days = 30): Promise<AdminData | null> {
     const supabase = createClient()
-    const [summary, daily, categories, filterHistogram, users, matrix] = await Promise.all([
+    const [summary, daily, categories, filterHistogram, users, matrix, watchedTags] = await Promise.all([
         supabase.rpc('admin_summary'),
         supabase.rpc('admin_daily_activity', { days }),
         supabase.rpc('admin_category_distribution'),
         supabase.rpc('admin_filter_histogram'),
         supabase.rpc('admin_user_detail'),
         supabase.rpc('admin_user_category_matrix'),
+        supabase.rpc('admin_watched_tags'),
     ])
 
     // どれか一つでも認可エラーなら管理者ではない（or 未適用）
-    // matrix は後から追加したRPCなので、未適用でもページ全体は生かす
+    // matrix / watchedTags は後から追加したRPCなので、未適用でもページ全体は生かす
     if (summary.error || daily.error || categories.error || filterHistogram.error || users.error) {
         return null
     }
@@ -113,5 +131,6 @@ export async function fetchAdminData(days = 30): Promise<AdminData | null> {
         filterHistogram: (filterHistogram.data ?? []) as FilterBucket[],
         users: (users.data ?? []) as UserDetail[],
         matrix: matrix.error ? null : ((matrix.data ?? []) as UserCategoryCell[]),
+        watchedTags: watchedTags.error ? null : ((watchedTags.data ?? []) as WatchedTagAgg[]),
     }
 }
