@@ -433,8 +433,13 @@ async function computeHotKeywords(
     return picked
 }
 
-/** メタデータクエリの1ページあたり件数（埋め込み列を含まないので軽い） */
-const PACK_META_PAGE = 200
+/** メタデータ取得の時間スライス幅と最大遡り数（6時間×12=72時間分）。
+ *  offsetページングはoffsetが深くなるほどインデックス歩行が伸び、テーブル肥大化した
+ *  現状ではoffset400（3ページ目）で statement timeout になった（2026-07-13の障害）。
+ *  collected_at の範囲指定ならインデックスレンジスキャンで、深さに関わらず一定コスト。 */
+const PACK_META_SLICE_MS = 6 * 60 * 60 * 1000
+const PACK_META_MAX_SLICES = 12
+const PACK_META_COLUMNS = 'id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at'
 /** 埋め込み取得の1文あたり件数。
  *  埋め込み列（1024次元×約15KB）はテーブル肥大化により、100件の一括読み出しでも
  *  Supabaseの statement timeout（57014）を超えるようになった（2026-07-13の障害）。
@@ -445,26 +450,40 @@ async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket)
     // 1. メタデータのみ取得（embedding_m3はフィルタにだけ使い、列としては読まない）。
     //    埋め込み込みの一括読み出しはTOAST読み出しがタイムアウトするため、
     //    埋め込みは旧パックからの再利用を基本とする（増分方式）。
+    //    最新記事の時刻を起点に、6時間ずつの時間スライスで遡って集める。
+    const { data: head, error: headErr } = await supabase
+        .from('articles')
+        .select('collected_at')
+        .not('embedding_m3', 'is', null)
+        .order('collected_at', { ascending: false })
+        .limit(1)
+    if (headErr || !head || head.length === 0) {
+        console.error('Pack head query error:', headErr)
+        return
+    }
+    // DBはマイクロ秒精度・Dateはミリ秒精度なので、+1msして最新行が上限に含まれるようにする
+    const topMs = Date.parse(head[0].collected_at) + 1
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any[] = []
-    for (let off = 0; off < PACK_SIZE; off += PACK_META_PAGE) {
+    for (let k = 0; k < PACK_META_MAX_SLICES && data.length < PACK_SIZE; k++) {
+        const sliceTop = new Date(topMs - k * PACK_META_SLICE_MS).toISOString()
+        const sliceBottom = new Date(topMs - (k + 1) * PACK_META_SLICE_MS).toISOString()
         const { data: page, error } = await supabase
             .from('articles')
-            .select('id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at')
+            .select(PACK_META_COLUMNS)
             .not('embedding_m3', 'is', null)
+            .lt('collected_at', sliceTop)
+            .gte('collected_at', sliceBottom)
             .order('collected_at', { ascending: false })
-            .range(off, off + PACK_META_PAGE - 1)
+            .limit(PACK_SIZE - data.length)
 
         if (error) {
-            console.error(`Pack meta query error (page ${off / PACK_META_PAGE}):`, error)
-            // 先頭ページから失敗したら旧パックを維持して撤退。
-            // 途中ページの失敗は、そこまでの新しい記事だけで縮小パックを作る
-            if (data.length === 0) return
-            break
+            // 失敗したスライスは飛ばして続行（そこだけ欠けた縮小パックになる）
+            console.error(`Pack meta slice ${k} error:`, error)
+            continue
         }
-        if (!page || page.length === 0) break
-        data.push(...page)
-        if (page.length < PACK_META_PAGE) break
+        if (page) data.push(...page)
     }
     if (data.length === 0) return
 
