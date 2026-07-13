@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Search, Flame } from 'lucide-react'
-import { getAllArticles } from '@/lib/client/store'
+import { getAllArticles, getKV } from '@/lib/client/store'
 import { hotKeywords } from '@/lib/client/engine'
 
 export function SidebarSearch() {
@@ -24,15 +24,23 @@ export function SidebarSearch() {
 
     useEffect(() => {
         let cancelled = false
-        getAllArticles().then(arts => {
+        const load = async () => {
+            // 第一候補: Workerがパックに焼き込んだ「今日特有×注目度」の語
+            // （平常時ベースラインとの比較はDBを持つWorker側でしかできない）
+            let tags = (await getKV<string[]>('hot_keywords')) || []
+            if (tags.length === 0) {
+                // フォールバック: パック未更新の間は端末内の頻度ベース抽出
+                tags = hotKeywords(await getAllArticles(), 10)
+            }
             if (cancelled) return
-            const tags = hotKeywords(arts, 10)
+            tags = tags.slice(0, 10)
             for (let i = tags.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1))
                 ;[tags[i], tags[j]] = [tags[j], tags[i]]
             }
             setHot(tags)
-        }).catch(() => { /* IndexedDB未対応環境では非表示 */ })
+        }
+        load().catch(() => { /* IndexedDB未対応環境では非表示 */ })
         return () => { cancelled = true }
     }, [])
 

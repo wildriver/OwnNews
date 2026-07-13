@@ -339,20 +339,28 @@ export function searchArticles(
 
 // ---- 話題のキーワード ----
 
-/** 話題性の集計窓: 直近48時間の記事を「いま」とみなす */
-const HOT_WINDOW_MS = 48 * 60 * 60 * 1000
-/** 常に大量出現して「話題」を意味しない語（ジャンル名はジャンル絞り込みと重複するので除外） */
+/** 話題性の集計窓: 直近24時間を「今日」、それ以前のパック内記事を「平常時」とみなす */
+const HOT_WINDOW_MS = 24 * 60 * 60 * 1000
+/** 「今日」の記事がこれ未満なら窓を48時間に広げる（パック更新直後・低頻度期の保険） */
+const HOT_MIN_RECENT = 30
+/** 今日の出現率が平常時の何倍なら「話題」とみなすか（毎日一定量出る語＝リフト≒1倍を弾く） */
+const HOT_MIN_LIFT = 2
+/** 常連語でもリフト判定が効かない固有の汎用語（ジャンル名はジャンル絞り込みと重複するので除外） */
 const HOT_STOPWORDS = new Set([
     '日本', '東京', '米国', 'アメリカ', '中国', '韓国', '政府',
     '政治', '経済', '国際', '社会', 'IT', 'スポーツ', 'エンターテイメント', 'サイエンス',
+    '訃報', '追悼', '死去', '人事',
     '事件', '事故', 'ニュース', '速報', '発表', '話題',
 ])
 
 /**
- * 話題のキーワードを抽出する（サイドバーのタグクラウド用）。
- * 直近48時間の記事でのキーワード出現数を、全期間の出現数で割った集中度で採点する
- * （常連語より「いま急に増えた語」が選ばれる）。ランキング表示はしない前提なので
- * 順位そのものに意味は持たせず、表示側でシャッフルして使うこと。
+ * 話題のキーワードを抽出する【フォールバック用】。
+ * 本命はWorkerがパックに焼き込む hot_keywords（過去7日の平常時ベースラインと
+ * 比較するリフト×注目度。パックは直近800件≒ほぼ1日分しかないため、平常時との
+ * 比較はDBを持つWorker側でしか正しく計算できない）。
+ * この関数はパック未更新の間だけ使われ、パック内で同じ式を試みるが、
+ * 実際にはベースライン不足でリフト足切りが無効になり頻度×注目度に近い挙動になる。
+ * ランキング表示はしない前提なので、表示側でシャッフルして使うこと。
  */
 export function hotKeywords(articles: PackArticle[], limit = 10): string[] {
     let newestMs = 0
@@ -361,22 +369,42 @@ export function hotKeywords(articles: PackArticle[], limit = 10): string[] {
         if (t > newestMs) newestMs = t
     }
     if (newestMs === 0) return []
-    const cutoffMs = newestMs - HOT_WINDOW_MS
+    let cutoffMs = newestMs - HOT_WINDOW_MS
+    const inWindow = (a: PackArticle) => Date.parse(a.collected_at || '') >= cutoffMs
+    if (articles.filter(inWindow).length < HOT_MIN_RECENT) cutoffMs = newestMs - HOT_WINDOW_MS * 2
 
+    let recentArts = 0
+    let baseArts = 0
     const recentCount = new Map<string, number>()
-    const totalCount = new Map<string, number>()
+    const baseCount = new Map<string, number>()
+    const attention = new Map<string, number>()
     for (const a of articles) {
         const tags = new Set((a.category_minor || []).filter(k => k.length >= 2 && !HOT_STOPWORDS.has(k)))
-        const isRecent = Date.parse(a.collected_at || '') >= cutoffMs
-        for (const k of tags) {
-            totalCount.set(k, (totalCount.get(k) || 0) + 1)
-            if (isRecent) recentCount.set(k, (recentCount.get(k) || 0) + 1)
+        if (inWindow(a)) {
+            recentArts++
+            const social = (a.views || 0) + Object.values(a.reactions || {}).reduce((s, n) => s + n, 0) * 3
+            for (const k of tags) {
+                recentCount.set(k, (recentCount.get(k) || 0) + 1)
+                attention.set(k, (attention.get(k) || 0) + 1 + Math.log1p(social))
+            }
+        } else {
+            baseArts++
+            for (const k of tags) baseCount.set(k, (baseCount.get(k) || 0) + 1)
         }
     }
+    if (recentArts === 0) return []
 
+    // 平常時サンプルが十分あるときだけリフト足切りを効かせる（初回同期直後などは頻度のみ）
+    const canLift = baseArts >= 50
     const scored = [...recentCount.entries()]
         .filter(([, c]) => c >= 3)   // 3記事以上で言及されて初めて「話題」
-        .map(([k, c]) => ({ k, score: (c * c) / (totalCount.get(k) || 1) }))
+        .map(([k, c]) => {
+            const todayRate = c / recentArts
+            const baseRate = ((baseCount.get(k) || 0) + 0.5) / Math.max(baseArts, 1)  // 0件はスムージング
+            const lift = todayRate / baseRate
+            return { k, lift, score: lift * (attention.get(k) || 1) }
+        })
+        .filter(({ lift }) => !canLift || lift >= HOT_MIN_LIFT)
         .sort((a, b) => b.score - a.score)
 
     // 「大谷翔平」と「大谷」のような包含関係の重複は高スコア側だけ残す
