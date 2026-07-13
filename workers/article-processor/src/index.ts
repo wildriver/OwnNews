@@ -335,6 +335,104 @@ function quantizeToBase64(vec: number[]): string | null {
     return btoa(binary)
 }
 
+// ---- 話題のキーワード（パックに焼き込む全ユーザー共通の集計） ----
+// パックは直近800件≒ほぼ1日分しか持たないため、「平常時」との比較はDBを持つ
+// Worker側でしかできない。TF-IDFと同じ発想:
+//   スコア = リフト（直近24時間の出現率 ÷ 過去7日の平常時出現率）
+//          × 注目度（その語を含む直近記事の閲覧数+リアクション×3、対数）
+// 毎日一定量出る語（訃報・株価など）はリフト≒1倍になるため2倍未満を足切りする。
+
+const HOT_WINDOW_MS = 24 * 60 * 60 * 1000
+const HOT_BASELINE_DAYS = 7
+const HOT_MIN_LIFT = 2
+const HOT_LIMIT = 12
+const HOT_STOPWORDS = new Set([
+    '日本', '東京', '米国', 'アメリカ', '中国', '韓国', '政府',
+    '政治', '経済', '国際', '社会', 'IT', 'スポーツ', 'エンターテイメント', 'サイエンス',
+    '訃報', '追悼', '死去', '人事',
+    '事件', '事故', 'ニュース', '速報', '発表', '話題',
+])
+
+async function computeHotKeywords(
+    supabase: SupabaseClient,
+    packArticles: { id: string; collected_at: string; category_minor?: string[] | null }[],
+    socialMap: Map<string, { views: number; reactions: Record<string, number> }>
+): Promise<string[]> {
+    let newestMs = 0
+    for (const a of packArticles) {
+        const t = Date.parse(a.collected_at || '')
+        if (t > newestMs) newestMs = t
+    }
+    if (newestMs === 0) return []
+    const cutoffIso = new Date(newestMs - HOT_WINDOW_MS).toISOString()
+    const baseStartIso = new Date(newestMs - HOT_WINDOW_MS - HOT_BASELINE_DAYS * 24 * 60 * 60 * 1000).toISOString()
+    const cutoffMs = newestMs - HOT_WINDOW_MS
+
+    // 「今日」= パック記事のうち直近24時間（パックは常に最新側なのでこれで十分）
+    let recentArts = 0
+    const recentCount = new Map<string, number>()
+    const attention = new Map<string, number>()
+    for (const a of packArticles) {
+        if (Date.parse(a.collected_at || '') < cutoffMs) continue
+        recentArts++
+        const social = socialMap.get(a.id)
+        const attn = (social?.views || 0) +
+            Object.values(social?.reactions || {}).reduce((s, n) => s + n, 0) * 3
+        const tags = new Set((a.category_minor || []).filter(k => k.length >= 2 && !HOT_STOPWORDS.has(k)))
+        for (const k of tags) {
+            recentCount.set(k, (recentCount.get(k) || 0) + 1)
+            attention.set(k, (attention.get(k) || 0) + 1 + Math.log1p(attn))
+        }
+    }
+    if (recentArts === 0) return []
+
+    // 「平常時」= その前7日分をDBからページングで取得（keywordsのみの軽い列）
+    let baseArts = 0
+    const baseCount = new Map<string, number>()
+    for (let page = 0; page < 10; page++) {
+        const { data, error } = await supabase
+            .from('articles')
+            .select('category_minor')
+            .gte('collected_at', baseStartIso)
+            .lt('collected_at', cutoffIso)
+            .range(page * 1000, page * 1000 + 999)
+        if (error) {
+            console.warn('hot keywords baseline query failed:', error.message)
+            break
+        }
+        if (!data || data.length === 0) break
+        for (const a of data as { category_minor?: string[] | null }[]) {
+            baseArts++
+            const tags = new Set((a.category_minor || []).filter(k => k.length >= 2 && !HOT_STOPWORDS.has(k)))
+            for (const k of tags) baseCount.set(k, (baseCount.get(k) || 0) + 1)
+        }
+        if (data.length < 1000) break
+    }
+
+    // 平常時サンプルが十分あるときだけリフト足切り（運用初期は頻度×注目度のみ）
+    const canLift = baseArts >= 200
+    const scored = [...recentCount.entries()]
+        .filter(([, c]) => c >= 3)   // 3記事以上で言及されて初めて「話題」
+        .map(([k, c]) => {
+            const todayRate = c / recentArts
+            const baseRate = ((baseCount.get(k) || 0) + 0.5) / Math.max(baseArts, 1)
+            const lift = todayRate / baseRate
+            return { k, lift, score: (canLift ? lift : 1) * (attention.get(k) || 1) }
+        })
+        .filter(({ lift }) => !canLift || lift >= HOT_MIN_LIFT)
+        .sort((a, b) => b.score - a.score)
+
+    // 「大谷翔平」と「大谷」のような包含関係の重複は高スコア側だけ残す
+    const picked: string[] = []
+    for (const { k } of scored) {
+        if (picked.length >= HOT_LIMIT) break
+        if (picked.some(p => p.includes(k) || k.includes(p))) continue
+        picked.push(k)
+    }
+    console.log(`Hot keywords: recent=${recentArts} base=${baseArts} lift=${canLift} -> ${picked.join(', ')}`)
+    return picked
+}
+
 async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket): Promise<void> {
     const { data, error } = await supabase
         .from('articles')
@@ -392,11 +490,20 @@ async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket)
         }
     })
 
+    // 話題のキーワード（今日特有×注目度）。失敗してもパック生成は続行
+    let hotKeywords: string[] = []
+    try {
+        hotKeywords = await computeHotKeywords(supabase, data || [], socialMap)
+    } catch (e) {
+        console.warn('hot keywords computation failed:', e)
+    }
+
     const pack = JSON.stringify({
         dim: 1024,
         count: articles.length,
         generated_at: new Date().toISOString(),
         latest,
+        hot_keywords: hotKeywords,
         articles,
     })
 

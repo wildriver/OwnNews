@@ -14,6 +14,8 @@ interface PackResponse {
     dim: number
     count: number
     latest: string
+    /** Workerが焼き込んだ「話題のキーワード」（今日特有×注目度。全ユーザー共通） */
+    hot_keywords?: string[]
     articles: PackArticle[]
 }
 
@@ -58,6 +60,7 @@ async function syncPack(): Promise<number> {
             await pruneArticles()
         }
         if (data.latest) await setKV(LAST_SYNC_KEY, data.latest)
+        if (Array.isArray(data.hot_keywords)) await setKV('hot_keywords', data.hot_keywords)
         await setKV('pack_last_fetched_ms', Date.now())
         return data.articles?.length || 0
     } catch (e) {
