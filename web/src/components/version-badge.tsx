@@ -1,4 +1,23 @@
+'use client'
+
+// デプロイ検証用のバージョン表示（右下）。
+// どのビルドが本番に出ているかをコミットハッシュ+ビルド時刻で示す運用補助。
+// 研究参加者には意味が無いので、運営（管理者）にだけ表示する。
+
+import { useEffect, useState } from 'react'
+import { checkIsAdmin } from '@/lib/client/admin'
+
 export function VersionBadge() {
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    checkIsAdmin().then(ok => { if (!cancelled) setIsAdmin(ok) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  if (!isAdmin) return null
+
   const hash = process.env.NEXT_PUBLIC_GIT_HASH || 'dev'
   const buildTime = process.env.NEXT_PUBLIC_BUILD_TIME || null
 
