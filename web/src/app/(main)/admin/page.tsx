@@ -211,6 +211,11 @@ function AdminDashboard({ data }: { data: AdminData }) {
     const catRows = data.categories.slice(0, 12).map(c => ({
         label: c.category || 'その他', value: c.views, color: catColor(c.category),
     }))
+    // 記事母集団の真の分布（articlesテーブル・直近30日の実データ）
+    const corpusRows = (data.corpus ?? []).slice(0, 12).map(c => ({
+        label: c.category || 'その他', value: c.cnt, color: catColor(c.category),
+    }))
+    const corpusTotal = (data.corpus ?? []).reduce((s, c) => s + c.cnt, 0)
 
     return (
         <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
@@ -254,6 +259,24 @@ function AdminDashboard({ data }: { data: AdminData }) {
                         <HBars rows={catRows} />
                     </Section>
                 </div>
+
+                {/* 記事母集団の真の分布（articlesテーブルの実データ・直近30日） */}
+                <Section
+                    title="記事母集団のジャンル分布（実データ・直近30日）"
+                    desc={data.corpus === null
+                        ? undefined
+                        : `収集した記事テーブルそのものの分布 — 合計 ${corpusTotal.toLocaleString()} 件。ユーザー画面の「配信中の記事の母集団」は端末キャッシュ（最大1500件）ベースなので、こちらが収集の実態。`}
+                >
+                    {data.corpus === null ? (
+                        <p className="text-[12px] text-muted-foreground">
+                            この分布を表示するには、supabase db push で 20260714090000_admin_corpus_distribution.sql を適用してください。
+                        </p>
+                    ) : corpusRows.length === 0 ? (
+                        <p className="text-[12px] text-muted-foreground">直近30日の記事がありません。</p>
+                    ) : (
+                        <HBars rows={corpusRows} />
+                    )}
+                </Section>
 
                 {/* バブルの可視化（ユーザー×ジャンル行列から導出） */}
                 {bubble ? (

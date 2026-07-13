@@ -68,6 +68,11 @@ export interface WatchedTagAgg {
     subscribers: number
 }
 
+export interface CorpusCategory {
+    category: string
+    cnt: number
+}
+
 export interface AdminData {
     summary: AdminSummary
     daily: DailyActivity[]
@@ -78,6 +83,8 @@ export interface AdminData {
     matrix: UserCategoryCell[] | null
     /** 関心キーワード（ウォッチタグ）→購読者数。RPC未適用なら null。 */
     watchedTags: WatchedTagAgg[] | null
+    /** 記事母集団の真の分布（articlesテーブル・直近30日）。RPC未適用なら null。 */
+    corpus: CorpusCategory[] | null
 }
 
 /**
@@ -108,7 +115,7 @@ export async function checkIsAdmin(): Promise<boolean> {
  */
 export async function fetchAdminData(days = 30): Promise<AdminData | null> {
     const supabase = createClient()
-    const [summary, daily, categories, filterHistogram, users, matrix, watchedTags] = await Promise.all([
+    const [summary, daily, categories, filterHistogram, users, matrix, watchedTags, corpus] = await Promise.all([
         supabase.rpc('admin_summary'),
         supabase.rpc('admin_daily_activity', { days }),
         supabase.rpc('admin_category_distribution'),
@@ -116,6 +123,7 @@ export async function fetchAdminData(days = 30): Promise<AdminData | null> {
         supabase.rpc('admin_user_detail'),
         supabase.rpc('admin_user_category_matrix'),
         supabase.rpc('admin_watched_tags'),
+        supabase.rpc('admin_corpus_distribution'),
     ])
 
     // どれか一つでも認可エラーなら管理者ではない（or 未適用）
@@ -132,5 +140,6 @@ export async function fetchAdminData(days = 30): Promise<AdminData | null> {
         users: (users.data ?? []) as UserDetail[],
         matrix: matrix.error ? null : ((matrix.data ?? []) as UserCategoryCell[]),
         watchedTags: watchedTags.error ? null : ((watchedTags.data ?? []) as WatchedTagAgg[]),
+        corpus: corpus.error ? null : ((corpus.data ?? []) as CorpusCategory[]),
     }
 }
