@@ -6,7 +6,7 @@
 // 管理者以外がURLを直接開いてもRPCが弾くため、何も表示されない。
 
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Users, Eye, Sparkles, EyeOff, BellRing, Gauge, ShieldAlert } from 'lucide-react'
+import { Loader2, Users, Eye, Sparkles, EyeOff, BellRing, Gauge, ShieldAlert, Search, Tag, Compass } from 'lucide-react'
 import { fetchAdminData, AdminData, anonUser } from '@/lib/client/admin'
 import { deriveBubbleProfiles, BubbleHeatmap, DiversityScatter, RadarGrid } from '@/components/admin-bubble-viz'
 
@@ -163,6 +163,46 @@ function AdminDashboard({ data }: { data: AdminData }) {
     )
 
     const s = data.summary
+
+    // もっと知る（AI/X/はてブ）合計。新フィールド未定義（RPC未適用）は従来表示にフォールバック。
+    const hasKnowMore = s.know_ai !== undefined || s.know_x !== undefined || s.know_hatena !== undefined
+    const knowMoreTotal = (s.know_ai ?? 0) + (s.know_x ?? 0) + (s.know_hatena ?? 0)
+
+    // 多様性スコア: bubble profiles のエントロピー(0-1)をユーザーIDで引けるように。
+    const profByUser = useMemo(
+        () => bubble ? new Map(bubble.profiles.map(p => [p.user_id, p])) : null,
+        [bubble]
+    )
+    const divColor = (v: number) => v >= 70 ? 'text-emerald-600' : v >= 40 ? 'text-amber-600' : 'text-rose-600'
+
+    // 各ユーザーが実際に閲覧したジャンル集合（matrixから）→「足りない主要ジャンル」算出用。
+    const viewedByUser = useMemo(() => {
+        const m = new Map<string, Set<string>>()
+        if (data.matrix) {
+            for (const cell of data.matrix) {
+                const set = m.get(cell.user_id) ?? new Set<string>()
+                set.add(cell.category)
+                m.set(cell.user_id, set)
+            }
+        }
+        return m
+    }, [data.matrix])
+    // 主要ジャンル（CAT_COLORSのキー集合、その他を除く）をグローバル人気順に並べる。
+    const majorGenres = useMemo(() => {
+        const catViews = new Map(data.categories.map(c => [c.category, c.views]))
+        return Object.keys(CAT_COLORS)
+            .filter(g => g !== 'その他')
+            .sort((a, b) => (catViews.get(b) ?? 0) - (catViews.get(a) ?? 0))
+    }, [data.categories])
+    // そのユーザーがシェア0%（=一度も読んでいない）主要ジャンルの上位3つ。
+    const missingFor = (uid: string): string[] => {
+        const viewed = viewedByUser.get(uid)
+        if (!viewed) return []
+        return majorGenres.filter(g => !viewed.has(g)).slice(0, 3)
+    }
+
+    const colCount = bubble ? 11 : 10
+
     const filterRows = data.filterHistogram.map(b => ({
         label: b.bucket, value: b.cnt,
         color: b.bucket.startsWith('0.0') || b.bucket.startsWith('0.2') ? 'bg-primary' : b.bucket.startsWith('0.4') ? 'bg-amber-500' : 'bg-emerald-500',
@@ -183,11 +223,15 @@ function AdminDashboard({ data }: { data: AdminData }) {
                 </header>
 
                 {/* KPI */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                     <Kpi icon={Users} label="登録ユーザー" value={s.total_users}
                         sub={`7日アクティブ ${s.active_7d} / 30日 ${s.active_30d}`} />
                     <Kpi icon={Eye} label="総閲覧" value={s.total_views.toLocaleString()}
-                        sub={`うち深掘り ${s.total_deep_dives.toLocaleString()}`} />
+                        sub={hasKnowMore
+                            ? `もっと知る ${knowMoreTotal.toLocaleString()}（AI ${(s.know_ai ?? 0).toLocaleString()} / X ${(s.know_x ?? 0).toLocaleString()} / はてブ ${(s.know_hatena ?? 0).toLocaleString()}）`
+                            : `うち深掘り ${s.total_deep_dives.toLocaleString()}`} />
+                    <Kpi icon={Search} label="検索利用" value={(s.search_30d ?? 0).toLocaleString()}
+                        sub={`直近7日 ${(s.search_7d ?? 0).toLocaleString()}回・検索語は収集しない`} />
                     <Kpi icon={Gauge} label="平均フィルタ強度" value={s.avg_filter_strength ?? '—'}
                         sub="0=バブル寄り / 1=視野を広げる" />
                     <Kpi icon={BellRing} label="Push購読者" value={s.push_subscribers}
@@ -245,18 +289,43 @@ function AdminDashboard({ data }: { data: AdminData }) {
                     </Section>
                 )}
 
+                {/* 関心キーワード（ウォッチタグ）: タグ→購読者数の匿名集計 */}
+                <Section title="関心キーワード（ウォッチタグ）" desc="ユーザーが「確実に見たい」と購読したキーワードと、その購読者数（匿名集計・上位20）。">
+                    {data.watchedTags && data.watchedTags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                            {data.watchedTags.map(t => (
+                                <span key={t.tag} className="inline-flex items-center gap-1 text-[12px] bg-secondary rounded-full pl-2.5 pr-1 py-0.5 border border-border">
+                                    <Tag className="w-3 h-3 text-muted-foreground" />
+                                    {t.tag}
+                                    <span className="tnum text-[10px] font-semibold bg-primary/10 text-primary rounded-full px-1.5 py-0.5">{t.subscribers}</span>
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-[12px] text-muted-foreground">
+                            {data.watchedTags === null
+                                ? 'このセクションを表示するには、supabase db push でマイグレーション（20260713120000_admin_engagement.sql ほか未適用分）を適用してください。'
+                                : 'まだ購読されているウォッチタグはありません。'}
+                        </p>
+                    )}
+                </Section>
+
                 {/* ユーザー別 */}
-                <Section title="ユーザー別の観測" desc="バブル集中度 = 最も読むジャンルが閲覧全体に占める割合。高いほど単一ジャンルに偏り（バブルが強い）。IDは匿名加工（同一ユーザーは常に同じID）。">
+                <Section title="ユーザー別の観測" desc="バブル集中度 = 最も読むジャンルが閲覧全体に占める割合。高いほど単一ジャンルに偏り（バブルが強い）。多様性スコア = 閲覧ジャンル分布のエントロピー(0-100)。IDは匿名加工（同一ユーザーは常に同じID）。">
                     <div className="overflow-x-auto -mx-1">
-                        <table className="w-full text-[12px] min-w-[640px]">
+                        <table className="w-full text-[12px] min-w-[880px]">
                             <thead>
                                 <tr className="text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
                                     <th className="text-left font-medium py-2 px-2">ユーザー</th>
                                     <th className="text-right font-medium py-2 px-2">閲覧</th>
-                                    <th className="text-right font-medium py-2 px-2">深掘り</th>
+                                    <th className="text-right font-medium py-2 px-2">もっと知る</th>
+                                    <th className="text-right font-medium py-2 px-2">検索</th>
+                                    <th className="text-right font-medium py-2 px-2">📌タグ</th>
                                     <th className="text-right font-medium py-2 px-2">非表示</th>
                                     <th className="text-left font-medium py-2 px-2">フィルタ強度</th>
                                     <th className="text-left font-medium py-2 px-2">バブル集中度</th>
+                                    {bubble && <th className="text-right font-medium py-2 px-2">多様性</th>}
+                                    <th className="text-left font-medium py-2 px-2">足りない栄養素</th>
                                     <th className="text-right font-medium py-2 px-2">最終</th>
                                 </tr>
                             </thead>
@@ -264,11 +333,17 @@ function AdminDashboard({ data }: { data: AdminData }) {
                                 {data.users.map(u => {
                                     const ratio = u.top_ratio != null ? Math.round(u.top_ratio * 100) : null
                                     const fs = u.filter_strength ?? 0.5
+                                    const knowMore = u.know_more ?? u.deep_dives
+                                    const prof = profByUser?.get(u.user_id)
+                                    const div = prof ? Math.round(prof.entropy * 100) : null
+                                    const missing = missingFor(u.user_id)
                                     return (
                                         <tr key={u.user_id} className="hover:bg-secondary/50">
                                             <td className="py-2 px-2 tnum">{anonUser(u.user_id)}</td>
                                             <td className="py-2 px-2 text-right tnum">{u.views}</td>
-                                            <td className="py-2 px-2 text-right tnum text-indigo-600">{u.deep_dives || ''}</td>
+                                            <td className="py-2 px-2 text-right tnum text-indigo-600">{knowMore || ''}</td>
+                                            <td className="py-2 px-2 text-right tnum text-muted-foreground">{u.searches_30d || ''}</td>
+                                            <td className="py-2 px-2 text-right tnum text-muted-foreground">{u.watched_tags_count || ''}</td>
                                             <td className="py-2 px-2 text-right tnum text-muted-foreground">{u.dismissed || ''}</td>
                                             <td className="py-2 px-2">
                                                 <div className="flex items-center gap-1.5">
@@ -287,19 +362,38 @@ function AdminDashboard({ data }: { data: AdminData }) {
                                                     </div>
                                                 ) : <span className="text-muted-foreground/50">—</span>}
                                             </td>
+                                            {bubble && (
+                                                <td className="py-2 px-2 text-right">
+                                                    {div != null
+                                                        ? <span className={`tnum text-[11px] font-semibold ${divColor(div)}`}>{div}</span>
+                                                        : <span className="text-muted-foreground/50">—</span>}
+                                                </td>
+                                            )}
+                                            <td className="py-2 px-2">
+                                                {missing.length > 0 ? (
+                                                    <div className="flex flex-wrap gap-1 max-w-[160px]">
+                                                        {missing.map(g => (
+                                                            <span key={g} className="text-[10px] px-1.5 py-0.5 bg-secondary rounded border border-border">{g}</span>
+                                                        ))}
+                                                    </div>
+                                                ) : <span className="text-muted-foreground/50">—</span>}
+                                            </td>
                                             <td className="py-2 px-2 text-right text-muted-foreground tnum">{fmtRelative(u.last_active)}</td>
                                         </tr>
                                     )
                                 })}
                                 {data.users.length === 0 && (
-                                    <tr><td colSpan={7} className="text-center py-6 text-muted-foreground">ユーザーがいません</td></tr>
+                                    <tr><td colSpan={colCount} className="text-center py-6 text-muted-foreground">ユーザーがいません</td></tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
-                    <div className="flex items-center gap-4 mt-3 text-[10px] text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-4 mt-3 text-[10px] text-muted-foreground">
+                        <span className="flex items-center gap-1"><Sparkles className="w-3 h-3 text-indigo-600" />もっと知る=AI/X/はてブを開いた回数の合計</span>
+                        <span className="flex items-center gap-1"><Search className="w-3 h-3" />検索=直近30日の検索回数（検索語は非収集）</span>
                         <span className="flex items-center gap-1"><EyeOff className="w-3 h-3" />非表示=興味なし操作</span>
-                        <span className="flex items-center gap-1"><Sparkles className="w-3 h-3 text-indigo-600" />深掘り=AI要約を開いた回数</span>
+                        <span className="flex items-center gap-1"><Compass className="w-3 h-3" />多様性=高いほど幅広く閲覧（0-100）</span>
+                        <span className="flex items-center gap-1"><Tag className="w-3 h-3" />足りない栄養素=一度も読んでいない主要ジャンル</span>
                     </div>
                 </Section>
             </div>

@@ -24,6 +24,7 @@ import { WatchTagChip } from '@/components/watch-tag-chip'
 import { getKV, setKV, getAllInteractions } from '@/lib/client/store'
 import { pullUserData, pushVector, pushSettings } from '@/lib/client/sync'
 import { INTERACTION_EVENT } from '@/lib/client/interactions'
+import { bumpUsageEvent } from '@/lib/client/usage'
 
 function todayLabel(): string {
     const d = new Date()
@@ -116,6 +117,11 @@ export function LocalFeed() {
         window.addEventListener(INTERACTION_EVENT, handler)
         return () => window.removeEventListener(INTERACTION_EVENT, handler)
     }, [])
+
+    // ---- 検索モードに入ったら「検索した回数」だけを匿名記録（検索語は送らない） ----
+    useEffect(() => {
+        if (searchQuery && searchQuery.trim()) bumpUsageEvent('search')
+    }, [searchQuery])
 
     // ---- 表示ビュー: おまかせ（バブル） / トピック別。端末に記憶 ----
     const [view, setView] = useState<'mix' | 'topics'>(() => {
