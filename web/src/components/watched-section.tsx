@@ -67,7 +67,7 @@ export function WatchedSection({ articles, seenIds, dismissedIds, onCategoryClic
                     </button>
                 ))}
                 <span className="ml-auto text-[10px] text-muted-foreground hidden sm:block">
-                    タグを含む記事を必ずここに表示（記事ページのキーワードから追加）
+                    タグを含む記事を必ずここに表示（記事のキーワードや検索から追加）
                 </span>
             </div>
             {matched.length === 0 ? (

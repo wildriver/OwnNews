@@ -313,6 +313,82 @@ export function filterWatchedArticles(
     return groupArticles(hit.slice(0, 30).map(a => toArticle(a, 0, false)))
 }
 
+// ---- キーワード検索 ----
+
+/**
+ * キーワード検索（サイドバーの検索ボックス用）。
+ * タイトル・概要・キーワードの部分一致。探し物なので既読記事も含め、新着順で返す。
+ * ジャンル非表示より優先させたいので、呼び出し側は除外前の全記事を渡すこと。
+ */
+export function searchArticles(
+    articles: PackArticle[],
+    q: string,
+    dismissedIds: Set<string>
+): GroupedArticle[] {
+    const query = q.trim().toLowerCase()
+    if (!query) return []
+    const hit = articles.filter(a => {
+        if (dismissedIds.has(a.id)) return false
+        return (a.title || '').toLowerCase().includes(query) ||
+            (a.summary || '').toLowerCase().includes(query) ||
+            (a.category_minor || []).some(k => k.toLowerCase().includes(query))
+    })
+    hit.sort((x, y) => (y.collected_at || '').localeCompare(x.collected_at || ''))
+    return groupArticles(hit.slice(0, OUT_MAX).map(a => toArticle(a, 0, false)))
+}
+
+// ---- 話題のキーワード ----
+
+/** 話題性の集計窓: 直近48時間の記事を「いま」とみなす */
+const HOT_WINDOW_MS = 48 * 60 * 60 * 1000
+/** 常に大量出現して「話題」を意味しない語（ジャンル名はジャンル絞り込みと重複するので除外） */
+const HOT_STOPWORDS = new Set([
+    '日本', '東京', '米国', 'アメリカ', '中国', '韓国', '政府',
+    '政治', '経済', '国際', '社会', 'IT', 'スポーツ', 'エンターテイメント', 'サイエンス',
+    '事件', '事故', 'ニュース', '速報', '発表', '話題',
+])
+
+/**
+ * 話題のキーワードを抽出する（サイドバーのタグクラウド用）。
+ * 直近48時間の記事でのキーワード出現数を、全期間の出現数で割った集中度で採点する
+ * （常連語より「いま急に増えた語」が選ばれる）。ランキング表示はしない前提なので
+ * 順位そのものに意味は持たせず、表示側でシャッフルして使うこと。
+ */
+export function hotKeywords(articles: PackArticle[], limit = 10): string[] {
+    let newestMs = 0
+    for (const a of articles) {
+        const t = Date.parse(a.collected_at || '')
+        if (t > newestMs) newestMs = t
+    }
+    if (newestMs === 0) return []
+    const cutoffMs = newestMs - HOT_WINDOW_MS
+
+    const recentCount = new Map<string, number>()
+    const totalCount = new Map<string, number>()
+    for (const a of articles) {
+        const tags = new Set((a.category_minor || []).filter(k => k.length >= 2 && !HOT_STOPWORDS.has(k)))
+        const isRecent = Date.parse(a.collected_at || '') >= cutoffMs
+        for (const k of tags) {
+            totalCount.set(k, (totalCount.get(k) || 0) + 1)
+            if (isRecent) recentCount.set(k, (recentCount.get(k) || 0) + 1)
+        }
+    }
+
+    const scored = [...recentCount.entries()]
+        .filter(([, c]) => c >= 3)   // 3記事以上で言及されて初めて「話題」
+        .map(([k, c]) => ({ k, score: (c * c) / (totalCount.get(k) || 1) }))
+        .sort((a, b) => b.score - a.score)
+
+    // 「大谷翔平」と「大谷」のような包含関係の重複は高スコア側だけ残す
+    const picked: string[] = []
+    for (const { k } of scored) {
+        if (picked.length >= limit) break
+        if (picked.some(p => p.includes(k) || k.includes(p))) continue
+        picked.push(k)
+    }
+    return picked
+}
+
 // ---- トピック別ビュー ----
 
 export interface TopicSection {

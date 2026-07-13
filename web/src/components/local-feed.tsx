@@ -15,11 +15,12 @@ import { LocalFilterSlider } from '@/components/local-filter-slider'
 import { TextSizeControl } from '@/components/text-size-control'
 import { CategoryFilterBar, loadExcluded, saveExcluded } from '@/components/category-filter-bar'
 import { Button } from '@/components/ui/button'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw, X } from 'lucide-react'
 import { GroupedArticle, ONBOARDING_CATEGORIES } from '@/lib/types'
 import { PackArticle } from '@/lib/client/types'
 import { loadArticles } from '@/lib/client/pack'
-import { rankFeed, filterArticles, seedVectorFromCategories } from '@/lib/client/engine'
+import { rankFeed, filterArticles, searchArticles, seedVectorFromCategories } from '@/lib/client/engine'
+import { WatchTagChip } from '@/components/watch-tag-chip'
 import { getKV, setKV, getAllInteractions } from '@/lib/client/store'
 import { pullUserData, pushVector, pushSettings } from '@/lib/client/sync'
 import { INTERACTION_EVENT } from '@/lib/client/interactions'
@@ -36,6 +37,7 @@ export function LocalFeed() {
     const selectedCategory = searchParams.get('category')
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
+    const searchQuery = searchParams.get('q')
 
     const [articles, setArticles] = useState<PackArticle[]>([])
     const [vector, setVector] = useState<number[] | null>(null)
@@ -149,7 +151,7 @@ export function LocalFeed() {
     }, [articles, excluded])
 
     // ---- フィード計算（1000件×1024次元でも数十ms） ----
-    const isFilterMode = !!(selectedCategory || dateFrom || dateTo)
+    const isFilterMode = !!(selectedCategory || dateFrom || dateTo || searchQuery)
 
     // 埋め込みがまだ1件も無い（Worker未処理）場合はベクトル分類ができないため、
     // 最新ニュースのリスト表示にフォールバックする（バブル分類は埋め込み生成後に有効化）。
@@ -163,6 +165,10 @@ export function LocalFeed() {
 
     const fallbackArticles = useMemo<GroupedArticle[]>(() => {
         if (loading) return []
+        if (searchQuery) {
+            // 検索はジャンル非表示・既読除外より優先（探し物は全記事から）
+            return searchArticles(articles, searchQuery, dismissedIds)
+        }
         if (isFilterMode) {
             return filterArticles(visibleArticles, { category: selectedCategory, dateFrom, dateTo }, seenIds, dismissedIds)
         }
@@ -171,7 +177,7 @@ export function LocalFeed() {
             return filterArticles(visibleArticles, {}, seenIds, dismissedIds)
         }
         return []
-    }, [loading, isFilterMode, canRank, visibleArticles, selectedCategory, dateFrom, dateTo, seenIds, dismissedIds])
+    }, [loading, isFilterMode, canRank, articles, visibleArticles, selectedCategory, dateFrom, dateTo, searchQuery, seenIds, dismissedIds])
 
     // ---- オンボーディング: 関心カテゴリ選択から初期ベクトル生成 ----
     const completeOnboarding = async () => {
@@ -214,7 +220,35 @@ export function LocalFeed() {
                 </div>
             </header>
 
-            {!selectedCategory && <CategoryFilterBar excluded={excluded} onExcludeChange={handleExcludeChange} />}
+            {!selectedCategory && !searchQuery && <CategoryFilterBar excluded={excluded} onExcludeChange={handleExcludeChange} />}
+
+            {/* 検索モード: 結果ヘッダー。キーワードはその場でウォッチタグ化できる */}
+            {searchQuery && (
+                <div className="mb-3 flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] text-muted-foreground">検索:</span>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-accent-foreground bg-accent rounded-full pl-2.5 pr-1 py-0.5">
+                        {searchQuery}
+                        <button
+                            onClick={() => router.push('/')}
+                            aria-label="検索を解除"
+                            className="h-4 w-4 rounded-full inline-flex items-center justify-center hover:bg-black/10"
+                        >
+                            <X className="h-3 w-3" />
+                        </button>
+                    </span>
+                    <span className="text-[11px] text-muted-foreground tnum">{fallbackArticles.length}件</span>
+                    <WatchTagChip tag={searchQuery} action />
+                </div>
+            )}
+
+            {searchQuery && articles.length > 0 && fallbackArticles.length === 0 && (
+                <div className="text-center py-12 bg-card border border-border rounded-xl space-y-1">
+                    <p className="text-sm text-muted-foreground">「{searchQuery}」に一致する記事は見つかりませんでした</p>
+                    <p className="text-[11px] text-muted-foreground">
+                        ウォッチタグに追加しておくと、この言葉を含む記事が届き次第トップの専用枠に表示されます
+                    </p>
+                </div>
+            )}
 
             {/* 表示ビュー切替: おまかせ（バブル） / トピック別 */}
             {!isFilterMode && articles.length > 0 && (
@@ -303,7 +337,7 @@ export function LocalFeed() {
                 />
             )}
 
-            {articles.length > 0 && (
+            {articles.length > 0 && !(searchQuery && fallbackArticles.length === 0) && (
                 view === 'topics' && !isFilterMode ? (
                     <TopicFeed
                         articles={visibleArticles}

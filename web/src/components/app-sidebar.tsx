@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { LayoutDashboard, Newspaper, Settings, Activity, History, LogOut, ShieldCheck } from 'lucide-react'
 import { HealthStats } from '@/lib/types'
 import { DateFilterClient } from '@/components/date-filter-client'
+import { SidebarSearch } from '@/components/sidebar-search'
 import { getAllInteractions } from '@/lib/client/store'
 import { computeHealthStats } from '@/lib/client/health-local'
 import { INTERACTION_EVENT } from '@/lib/client/interactions'
@@ -86,6 +87,13 @@ export function AppSidebar({ userEmail }: { userEmail: string }) {
                             )
                         })}
                     </nav>
+
+                    <Separator className="bg-border" />
+
+                    {/* useSearchParams（現在の?qへの追従）を使うためSuspenseで包む */}
+                    <Suspense fallback={null}>
+                        <SidebarSearch />
+                    </Suspense>
 
                     <Separator className="bg-border" />
 
