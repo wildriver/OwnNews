@@ -93,17 +93,18 @@ async function doPull(): Promise<RemoteState | null> {
         )
 
         const INT_BASE_COLS = 'article_id, interaction_type, created_at, category, category_medium, title, link, dwell_seconds, scroll_depth'
-        const INT_SCORE_COLS = 'fact_score, context_score, perspective_score, emotion_score, immediacy_score'
+        // 栄養素スコア＋キーワード（20260713150000で追加）。移行前は列が無いのでフォールバックする
+        const INT_SNAPSHOT_COLS = 'fact_score, context_score, perspective_score, emotion_score, immediacy_score, category_minor'
 
         const [{ data: profile }, { data: vecRow }, remoteInts] = await Promise.all([
             supabase.from('user_profile').select('filter_strength, excluded_categories, watched_tags, updated_at').eq('user_id', email).maybeSingle(),
             supabase.from('user_vectors').select('vector_m3, updated_at').eq('user_id', email).maybeSingle(),
-            // 栄養素スコア列つきで取得。移行前（列が無い）は列なしで再取得してフォールバック
+            // スナップショット列つきで取得。移行前（列が無い）は列なしで再取得してフォールバック
             (async () => {
                 const q = supabase.from('user_interactions')
-                const withScores = await q.select(`${INT_BASE_COLS}, ${INT_SCORE_COLS}`)
+                const withSnap = await q.select(`${INT_BASE_COLS}, ${INT_SNAPSHOT_COLS}`)
                     .eq('user_id', email).order('created_at', { ascending: false }).limit(2000)
-                if (!withScores.error) return withScores.data
+                if (!withSnap.error) return withSnap.data
                 const base = await q.select(INT_BASE_COLS)
                     .eq('user_id', email).order('created_at', { ascending: false }).limit(2000)
                 return base.data
@@ -132,11 +133,18 @@ async function doPull(): Promise<RemoteState | null> {
             await deleteInteractions(toDelete)
 
             // 2) リモート行を取り込み（同期済みローカルは上書き＝タイトル補完等を反映。
-            //    未pushのローカルは温存）。栄養素スコアはサーバに無ければ、ローカル既存行→
-            //    記事パックの順で補完する（上書きでスコアが消える不具合の対策）。
+            //    未pushのローカルは温存）。栄養素スコア・キーワードはサーバに無ければ、
+            //    ローカル既存行→記事パックの順で補完する（上書きで消える不具合の対策）。
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const pickScore = (r: any, art: PackArticleLike | undefined, prev: LocalInteraction | undefined, k: NutrientKey) =>
                 r[k] ?? prev?.[k] ?? art?.[k]
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const pickKeywords = (r: any, art: { category_minor?: string[] } | undefined, prev: LocalInteraction | undefined) => {
+                if (Array.isArray(r.category_minor) && r.category_minor.length) return r.category_minor
+                if (prev?.category_minor?.length) return prev.category_minor
+                if (art?.category_minor?.length) return art.category_minor
+                return undefined
+            }
             for (const r of remoteInts) {
                 const key = `${r.article_id}|${r.interaction_type}`
                 if (localUnsyncedKeys.has(key)) continue
@@ -148,6 +156,7 @@ async function doPull(): Promise<RemoteState | null> {
                     created_at: r.created_at,
                     category: r.category || undefined,
                     category_medium: r.category_medium || undefined,
+                    category_minor: pickKeywords(r, art, prev),
                     title: r.title || undefined,
                     link: r.link || undefined,
                     dwell_seconds: r.dwell_seconds || undefined,
@@ -226,15 +235,16 @@ async function doPull(): Promise<RemoteState | null> {
     }
 }
 
-/** upsert payload に載せる栄養素スコア列。値がある指標だけ含める
- *  （未読取り＝undefinedの記事で既存のスコアを0で潰さないため）。 */
-function nutrientCols(i: LocalInteraction): Record<string, number> {
-    const cols: Record<string, number> = {}
+/** upsert payload に載せる「記事スナップショット列」（栄養素スコア＋キーワード）。
+ *  値がある項目だけ含める（未取得＝undefinedで既存値を0や空で潰さないため）。 */
+function snapshotCols(i: LocalInteraction): Record<string, unknown> {
+    const cols: Record<string, unknown> = {}
     if (i.fact_score != null) cols.fact_score = i.fact_score
     if (i.context_score != null) cols.context_score = i.context_score
     if (i.perspective_score != null) cols.perspective_score = i.perspective_score
     if (i.emotion_score != null) cols.emotion_score = i.emotion_score
     if (i.immediacy_score != null) cols.immediacy_score = i.immediacy_score
+    if (Array.isArray(i.category_minor) && i.category_minor.length > 0) cols.category_minor = i.category_minor
     return cols
 }
 
@@ -254,7 +264,7 @@ export function pushInteraction(i: LocalInteraction): void {
             link: i.link || '',
             dwell_seconds: i.dwell_seconds ?? 0,
             scroll_depth: i.scroll_depth ?? 0,
-            ...nutrientCols(i),
+            ...snapshotCols(i),
         }, { onConflict: 'user_id, article_id, interaction_type' }).then(({ error }) => {
             if (!error) markInteractionsSynced([[i.article_id, i.type]])
         })
@@ -279,7 +289,7 @@ async function pushUnsyncedInteractions(): Promise<void> {
         link: i.link || '',
         dwell_seconds: i.dwell_seconds ?? 0,
         scroll_depth: i.scroll_depth ?? 0,
-        ...nutrientCols(i),
+        ...snapshotCols(i),
     }))
     const { error } = await supabase.from('user_interactions').upsert(rows, { onConflict: 'user_id, article_id, interaction_type' })
     if (!error) await markInteractionsSynced(unsynced.map(i => [i.article_id, i.type]))
