@@ -6,8 +6,11 @@ Fetches RSS feeds and saves raw article data to Supabase.
 
 import hashlib
 import os
+import random
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlparse
 
 import feedparser
 import requests
@@ -22,12 +25,40 @@ FEED_AGENT = (
     "OwnNewsBot/1.0 (research project; "
     "+https://ownnews-web.pages.dev; contact: yutaka@arakawa-lab.com)"
 )
-# フィード間の待機（秒）。CEEKは短時間の連続リクエストをスロットリングして
-# 空(0件)を返すことがある。間隔を空けて取りこぼしを防ぎ、負荷もかけない。
-FEED_DELAY_SEC = 3.0
-# 空(0件)が返ったときの追加リトライ回数と待機（スロットリングからの回復用）
-EMPTY_RETRIES = 2
-EMPTY_RETRY_WAIT_SEC = 6.0
+
+# ホスト別の最小リクエスト間隔（秒）。CEEKはAIアクセス急増への対策として
+# バースト的な連続アクセスを弾く（空を返す）。CEEKへは十分に間隔を空け、
+# 1分あたり数リクエスト程度に抑える（我々の総アクセスは13回/収集=65回/日と
+# もともと少ないので、バースト判定を避けることが目的）。
+CEEK_HOST = "news.ceek.jp"
+CEEK_MIN_INTERVAL = 10.0     # CEEKへの連続リクエスト間隔（保守的に広め）
+DEFAULT_MIN_INTERVAL = 1.5   # 他ホストは軽めでよい
+REQUEST_JITTER_SEC = 3.0     # 機械的な等間隔を避けるゆらぎ
+# 空(0件)が返ったときのリトライ（スロットリングからの回復用）。
+# リトライもCEEK負荷になるので控えめに。
+EMPTY_RETRIES = 1
+EMPTY_RETRY_WAIT_SEC = 12.0
+
+# OGP画像取得の並列数。記事リンクは各報道機関サイト（約110ホストに分散）で
+# CEEKではないため、並列化してもCEEKに負荷はかからない。逐次だと数百件×最大5秒で
+# 収集が数分〜十数分かかっていたのを短縮する。
+OGP_WORKERS = 6
+
+# 直近リクエスト時刻（ホスト別）。同一ホストへの連続アクセスの間隔制御に使う。
+_last_request_at: dict[str, float] = {}
+
+
+def _throttle_host(url: str) -> None:
+    """同一ホストへの連続アクセスがレート制限に触れないよう間隔を空ける。
+    CEEK は特に広く、他ホストは軽めに。ゆらぎを足して機械的な等間隔を避ける。"""
+    host = urlparse(url).netloc
+    min_gap = CEEK_MIN_INTERVAL if host == CEEK_HOST else DEFAULT_MIN_INTERVAL
+    last = _last_request_at.get(host)
+    if last is not None:
+        wait = min_gap - (time.monotonic() - last)
+        if wait > 0:
+            time.sleep(wait + random.uniform(0, REQUEST_JITTER_SEC))
+    _last_request_at[host] = time.monotonic()
 
 # フィード定義:
 #   url      : RSS/AtomフィードURL
@@ -72,15 +103,17 @@ def _article_id(link: str) -> str:
 def fetch_feed(feed_def: dict) -> list[dict]:
     """RSSフィードをパースし、記事リストを返す。
 
-    CEEKは連続アクセスで空(0件)を返すことがあるため、0件のときは
-    間隔を空けて数回リトライし、スロットリングからの回復を試みる。
+    同一ホストへの連続アクセスは間隔を空ける（CEEKは特に広く）。
+    それでも0件が返ったときは、さらに待ってから1回だけ取り直す。
     """
+    _throttle_host(feed_def["url"])
     feed = feedparser.parse(feed_def["url"], agent=FEED_AGENT)
     for _ in range(EMPTY_RETRIES):
         if feed.entries:
             break
-        # 0件 = スロットリングの可能性。少し待って取り直す
+        # 0件 = スロットリングの可能性。長めに待ってから取り直す（ホスト間隔も尊重）
         time.sleep(EMPTY_RETRY_WAIT_SEC)
+        _throttle_host(feed_def["url"])
         feed = feedparser.parse(feed_def["url"], agent=FEED_AGENT)
 
     articles = []
@@ -157,13 +190,11 @@ def collect() -> int:
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     # 全フィードから記事を収集（フィード間の重複はリンクで排除）。
-    # フィード間に待機を入れてスロットリングを避ける。各フィードの取得件数は
-    # ログに残す（どのカテゴリが痩せているかを後から確認できるように）。
+    # 同一ホストへの連続アクセスは fetch_feed 内で間隔制御（CEEKは特に広く）。
+    # 各フィードの取得件数はログに残す（どのカテゴリが痩せているか後から確認可能）。
     fetched: dict[str, dict] = {}
     empty_feeds: list[str] = []
-    for idx, feed_def in enumerate(FEEDS):
-        if idx > 0:
-            time.sleep(FEED_DELAY_SEC)
+    for feed_def in FEEDS:
         try:
             arts = fetch_feed(feed_def)
             for a in arts:
@@ -194,9 +225,13 @@ def collect() -> int:
 
     print(f"Found {len(new_articles)} new articles. Saving raw data...")
 
+    # OGP画像を並列取得（記事リンクはCEEKではなく各報道機関サイトに分散するため
+    # 並列化してもCEEKには負荷がかからない。逐次だと数百件×最大5秒で遅かった）。
+    with ThreadPoolExecutor(max_workers=OGP_WORKERS) as pool:
+        images = list(pool.map(lambda a: fetch_ogp_image(a["link"]), new_articles))
+
     rows = []
-    for a in new_articles:
-        img = fetch_ogp_image(a["link"])
+    for a, img in zip(new_articles, images):
         rows.append({
             "id": a["id"],
             "title": a["title"],
