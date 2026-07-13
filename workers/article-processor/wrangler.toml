@@ -26,3 +26,6 @@ crons = [
     # JST 21:00-23:00 -> UTC 12:00-14:00
     "*/10 12,13 * * *"
 ]
+
+[vars]
+SAKURA_MODEL = "gpt-oss-120b"
