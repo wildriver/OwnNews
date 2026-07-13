@@ -11,10 +11,15 @@
 
 import { createClient } from '@/lib/supabase/client'
 import {
-    getAllInteractions, markInteractionsSynced, putInteraction, deleteInteractions, setKV, getKV, clearAll,
+    getAllInteractions, markInteractionsSynced, putInteraction, deleteInteractions, setKV, getKV, clearAll, getAllArticles,
 } from './store'
 import { loadExcluded } from '@/components/category-filter-bar'
 import { LocalInteraction, InteractionType } from './types'
+
+/** 栄養素スコアのキー（LocalInteraction / PackArticle 共通） */
+type NutrientKey = 'fact_score' | 'context_score' | 'perspective_score' | 'emotion_score' | 'immediacy_score'
+/** スコア補完に使う記事側の最小形（数値スコアを持つ） */
+type PackArticleLike = Partial<Record<NutrientKey, number>>
 
 /** 同期完了時に発火。フィード/履歴/ダッシュボードが再読込するためのイベント。 */
 export const SYNCED_EVENT = 'ownnews:synced'
@@ -87,19 +92,31 @@ async function doPull(): Promise<RemoteState | null> {
             { onConflict: 'user_id' }
         )
 
-        const [{ data: profile }, { data: vecRow }, { data: remoteInts }] = await Promise.all([
+        const INT_BASE_COLS = 'article_id, interaction_type, created_at, category, category_medium, title, link, dwell_seconds, scroll_depth'
+        // 栄養素スコア＋キーワード（20260713150000で追加）。移行前は列が無いのでフォールバックする
+        const INT_SNAPSHOT_COLS = 'fact_score, context_score, perspective_score, emotion_score, immediacy_score, category_minor'
+
+        const [{ data: profile }, { data: vecRow }, remoteInts] = await Promise.all([
             supabase.from('user_profile').select('filter_strength, excluded_categories, watched_tags, updated_at').eq('user_id', email).maybeSingle(),
             supabase.from('user_vectors').select('vector_m3, updated_at').eq('user_id', email).maybeSingle(),
-            supabase.from('user_interactions')
-                .select('article_id, interaction_type, created_at, category, category_medium, title, link, dwell_seconds, scroll_depth')
-                .eq('user_id', email)
-                .order('created_at', { ascending: false })
-                .limit(2000),
+            // スナップショット列つきで取得。移行前（列が無い）は列なしで再取得してフォールバック
+            (async () => {
+                const q = supabase.from('user_interactions')
+                const withSnap = await q.select(`${INT_BASE_COLS}, ${INT_SNAPSHOT_COLS}`)
+                    .eq('user_id', email).order('created_at', { ascending: false }).limit(2000)
+                if (!withSnap.error) return withSnap.data
+                const base = await q.select(INT_BASE_COLS)
+                    .eq('user_id', email).order('created_at', { ascending: false }).limit(2000)
+                return base.data
+            })(),
         ])
 
         // リモート操作履歴をローカルキャッシュへ反映（リモートを真実として突き合わせ）
         if (remoteInts) {
             const local = await getAllInteractions()
+            const localByKey = new Map(local.map(l => [`${l.article_id}|${l.type}`, l]))
+            // 栄養素スコアの補完元: 端末にキャッシュ済みの記事パック（スコア完備）
+            const artById = new Map((await getAllArticles()).map(a => [a.id, a]))
             const remoteKeys = new Set(remoteInts.map(r => `${r.article_id}|${r.interaction_type}`))
             // 未pushのローカル操作は保持（サーバーにまだ無いだけ）
             const localUnsyncedKeys = new Set(local.filter(l => !l.synced).map(l => `${l.article_id}|${l.type}`))
@@ -116,20 +133,39 @@ async function doPull(): Promise<RemoteState | null> {
             await deleteInteractions(toDelete)
 
             // 2) リモート行を取り込み（同期済みローカルは上書き＝タイトル補完等を反映。
-            //    未pushのローカルは温存）
+            //    未pushのローカルは温存）。栄養素スコア・キーワードはサーバに無ければ、
+            //    ローカル既存行→記事パックの順で補完する（上書きで消える不具合の対策）。
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const pickScore = (r: any, art: PackArticleLike | undefined, prev: LocalInteraction | undefined, k: NutrientKey) =>
+                r[k] ?? prev?.[k] ?? art?.[k]
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const pickKeywords = (r: any, art: { category_minor?: string[] } | undefined, prev: LocalInteraction | undefined) => {
+                if (Array.isArray(r.category_minor) && r.category_minor.length) return r.category_minor
+                if (prev?.category_minor?.length) return prev.category_minor
+                if (art?.category_minor?.length) return art.category_minor
+                return undefined
+            }
             for (const r of remoteInts) {
                 const key = `${r.article_id}|${r.interaction_type}`
                 if (localUnsyncedKeys.has(key)) continue
+                const prev = localByKey.get(key)
+                const art = artById.get(r.article_id)
                 await putInteraction({
                     article_id: r.article_id,
                     type: r.interaction_type as InteractionType,
                     created_at: r.created_at,
                     category: r.category || undefined,
                     category_medium: r.category_medium || undefined,
+                    category_minor: pickKeywords(r, art, prev),
                     title: r.title || undefined,
                     link: r.link || undefined,
                     dwell_seconds: r.dwell_seconds || undefined,
                     scroll_depth: r.scroll_depth || undefined,
+                    fact_score: pickScore(r, art, prev, 'fact_score'),
+                    context_score: pickScore(r, art, prev, 'context_score'),
+                    perspective_score: pickScore(r, art, prev, 'perspective_score'),
+                    emotion_score: pickScore(r, art, prev, 'emotion_score'),
+                    immediacy_score: pickScore(r, art, prev, 'immediacy_score'),
                     synced: true,
                 })
             }
@@ -199,6 +235,19 @@ async function doPull(): Promise<RemoteState | null> {
     }
 }
 
+/** upsert payload に載せる「記事スナップショット列」（栄養素スコア＋キーワード）。
+ *  値がある項目だけ含める（未取得＝undefinedで既存値を0や空で潰さないため）。 */
+function snapshotCols(i: LocalInteraction): Record<string, unknown> {
+    const cols: Record<string, unknown> = {}
+    if (i.fact_score != null) cols.fact_score = i.fact_score
+    if (i.context_score != null) cols.context_score = i.context_score
+    if (i.perspective_score != null) cols.perspective_score = i.perspective_score
+    if (i.emotion_score != null) cols.emotion_score = i.emotion_score
+    if (i.immediacy_score != null) cols.immediacy_score = i.immediacy_score
+    if (Array.isArray(i.category_minor) && i.category_minor.length > 0) cols.category_minor = i.category_minor
+    return cols
+}
+
 /** 操作1件をSupabaseへ（fire-and-forget）。ログイン時のみ。 */
 export function pushInteraction(i: LocalInteraction): void {
     getUserEmail().then(email => {
@@ -215,6 +264,7 @@ export function pushInteraction(i: LocalInteraction): void {
             link: i.link || '',
             dwell_seconds: i.dwell_seconds ?? 0,
             scroll_depth: i.scroll_depth ?? 0,
+            ...snapshotCols(i),
         }, { onConflict: 'user_id, article_id, interaction_type' }).then(({ error }) => {
             if (!error) markInteractionsSynced([[i.article_id, i.type]])
         })
@@ -239,6 +289,7 @@ async function pushUnsyncedInteractions(): Promise<void> {
         link: i.link || '',
         dwell_seconds: i.dwell_seconds ?? 0,
         scroll_depth: i.scroll_depth ?? 0,
+        ...snapshotCols(i),
     }))
     const { error } = await supabase.from('user_interactions').upsert(rows, { onConflict: 'user_id, article_id, interaction_type' })
     if (!error) await markInteractionsSynced(unsynced.map(i => [i.article_id, i.type]))
