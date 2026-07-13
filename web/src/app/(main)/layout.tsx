@@ -4,6 +4,7 @@ import { AppSidebar } from '@/components/app-sidebar'
 import { MobileNav } from '@/components/mobile-nav'
 import { VersionBadge } from '@/components/version-badge'
 import { CloudSync } from '@/components/cloud-sync'
+import { InstallPrompt } from '@/components/install-prompt'
 
 export const runtime = 'edge'
 
@@ -29,6 +30,7 @@ export default async function MainLayout({
                 {children}
             </main>
             <MobileNav />
+            <InstallPrompt />
             <VersionBadge />
         </div>
     )
