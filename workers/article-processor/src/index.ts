@@ -896,7 +896,13 @@ export default {
                 .select('id, title, link, summary, category_medium, category_minor')
                 .gte('collected_at', analyzeSince)
                 .not('embedding_m3', 'is', null)
-                .is('fact_score', null)
+                // 未解析の判定は category_medium が空かどうかで行う。
+                // 収集時の新規記事は DBのデフォルトで fact_score=0 / category_medium=''
+                // が入る（schema.sql: default ''、migrate_nutrients.sql: DEFAULT 0）ため、
+                // 以前の .is('fact_score', null) では新規記事に永久にヒットせず、
+                // 解析が1件も走らなかった。解析後は sanitizeAnalysis が必ず
+                // 非空の category_medium を返すので、'' = 未解析 と判定できる。
+                .eq('category_medium', '')
                 .order('collected_at', { ascending: false })
                 .limit(ANALYZE_LIMIT)
 
