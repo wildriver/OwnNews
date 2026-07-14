@@ -223,6 +223,16 @@ def collect() -> int:
         print("No new articles found.")
         return 0
 
+    # 保存順をシャッフルする（重要）。
+    # 記事は50件ずつのチャンクでupsertされ、collected_at は各チャンクの now() が入る。
+    # フィード順のまま保存すると collected_at が「実際の新しさ」ではなく
+    # 「フィードの並び順」を表してしまい、先頭フィード（社会・政治・経済・国際）の
+    # 記事ほど古い時刻になる。パックは collected_at の新しい順に800件を採るため、
+    # 主要カテゴリが systematically パックから押し出されていた（2026-07-14の不具合）。
+    # 同じ収集回の記事はどれも等しく新しいので、順序をランダム化して
+    # collected_at がカテゴリと無相関になるようにする。
+    random.shuffle(new_articles)
+
     print(f"Found {len(new_articles)} new articles. Saving raw data...")
 
     # OGP画像を並列取得（記事リンクはCEEKではなく各報道機関サイトに分散するため
