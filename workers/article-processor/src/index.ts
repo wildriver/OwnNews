@@ -905,9 +905,10 @@ export default {
             console.warn('PACK_BUCKET binding not configured — pack generation skipped.')
         }
 
-        // 6. 日次プッシュ通知（JST朝の窓 = UTC21-23時台のcronでのみ、1日1回）
-        //    event.cron が朝枠のときだけ実行。R2の日付マーカーで多重送信を防ぐ。
-        if (event.cron === '*/10 21,22 * * *') {
+        // 6. 日次プッシュ通知（JST朝 6時台 = UTC 21時台の実行でのみ試行、1日1回）。
+        //    cronを終日化(*/30)したため、cron文字列ではなくUTC時刻で朝の窓を判定する。
+        //    実際の重複送信防止は sendDailyPushOnce のR2日付マーカーが担う。
+        if (new Date().getUTCHours() === 21) {
             ctx.waitUntil(sendDailyPushOnce(env, supabase))
         }
 
