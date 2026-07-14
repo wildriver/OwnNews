@@ -398,10 +398,12 @@ async function computeHotKeywords(
     }
     if (recentArts === 0) return []
 
-    // 「平常時」= その前7日分をDBからページングで取得（keywordsのみの軽い列）
+    // 「平常時」= その前7日分をDBからページングで取得（keywordsのみの軽い列）。
+    // Cloudflare無料枠の50サブリクエスト上限を守るためページ数を絞る
+    // （3ページ=最大3000件あればリフト計算のベースラインとして十分）。
     let baseArts = 0
     const baseCount = new Map<string, number>()
-    for (let page = 0; page < 10; page++) {
+    for (let page = 0; page < 3; page++) {
         const { data, error } = await supabase
             .from('articles')
             .select('category_minor')
@@ -463,11 +465,9 @@ const PACK_EMB_CHUNK = 20
 // 研究用の全データはR2に日次JSONで退避してから、DBの古い行を削除する。
 // （テーブル肥大化による statement timeout 障害（2026-07-13）の根本対策）
 
-/** DBに残す日数。これより古い「JST日」を丸ごとアーカイブ→削除する */
+/** DBに残す日数。これより古い「JST日」を丸ごとアーカイブ→削除する。
+ *  削除は collected_at の範囲指定による1文のDELETE（サブリクエスト1回）で行う。 */
 const RETENTION_DAYS = 30
-/** 1回の実行で削除する最大チャンク数（200件×10=2000件。溜まった過去分も数日で消化できる） */
-const RETENTION_DELETE_CHUNK = 200
-const RETENTION_DELETE_MAX_CHUNKS = 10
 /** アーカイブ取得のページサイズ。PostgRESTは1リクエスト最大1000行に黙って切り詰める
  *  （これを知らず .limit(2000) で200件を取りこぼし削除した事故が2026-07-13にあった）ため、
  *  必ず1000未満のページでスライス内をページングする */
@@ -595,28 +595,26 @@ async function archiveAndPruneOldest(supabase: SupabaseClient, bucket: R2Bucket)
         console.log(`Archived ${day}: ${merged.size} articles, ${rows.length} from DB (${(body.length / 1024).toFixed(0)} KB)`)
     }
 
-    // 2. アーカイブ済みの日をチャンク削除（1文=1タイムアウト枠）
-    let deleted = 0
-    for (let i = 0; i < RETENTION_DELETE_MAX_CHUNKS; i++) {
-        const { data: ids, error } = await supabase
-            .from('articles')
-            .select('id')
-            .gte('collected_at', fromIso)
-            .lt('collected_at', toIso)
-            .limit(RETENTION_DELETE_CHUNK)
-        if (error || !ids || ids.length === 0) break
-        const { error: dErr } = await supabase.from('articles').delete().in('id', ids.map(r => r.id))
-        if (dErr) {
-            console.error('Retention delete error:', dErr)
-            break
-        }
-        deleted += ids.length
-        if (ids.length < RETENTION_DELETE_CHUNK) break
-    }
-    if (deleted > 0) console.log(`Retention: deleted ${deleted} articles of ${day}`)
+    // 2. アーカイブ済みの日を範囲削除。
+    //    以前は「id取得→id指定削除」を10チャンク繰り返して20サブリクエストも
+    //    消費し、Cloudflare無料枠(50/実行)を圧迫していた。collected_at の範囲を
+    //    指定した1文の DELETE なら1サブリクエストで済む（インデックスが効く）。
+    const { error: dErr } = await supabase
+        .from('articles')
+        .delete()
+        .gte('collected_at', fromIso)
+        .lt('collected_at', toIso)
+    if (dErr) console.error('Retention delete error:', dErr)
+    else console.log(`Retention: deleted ${day} (${dayCount} articles)`)
 }
 
-async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket): Promise<void> {
+/** @param freshEmb 今回の実行で計算した量子化済み埋め込み（id → base64）。
+ *  DBから取り直さずに使うことで、Cloudflare無料枠の50サブリクエスト上限を守る。 */
+async function generateAndUploadPack(
+    supabase: SupabaseClient,
+    bucket: R2Bucket,
+    freshEmb: Map<string, string> = new Map(),
+): Promise<void> {
     // 1. メタデータのみ取得（embedding_m3はフィルタにだけ使い、列としては読まない）。
     //    埋め込み込みの一括読み出しはTOAST読み出しがタイムアウトするため、
     //    埋め込みは旧パックからの再利用を基本とする（増分方式）。
@@ -671,7 +669,12 @@ async function generateAndUploadPack(supabase: SupabaseClient, bucket: R2Bucket)
         console.warn('old pack read failed (falling back to DB for all embeddings):', e)
     }
 
-    // 3. 旧パックに無い記事（新規処理分）の埋め込みだけをDBから少数ずつ取得
+    // 2.5 今回の実行で計算したばかりの埋め込みを流用する（DBから取り直さない）。
+    //     Cloudflare無料枠は1実行あたり50サブリクエストしかなく、400件分を
+    //     20件ずつ取り直すと20回も消費して他の処理を巻き添えに落としていた。
+    for (const [id, b64] of freshEmb) embMap.set(id, b64)
+
+    // 3. 旧パックにも今回分にも無い記事の埋め込みだけをDBから少数ずつ取得
     const missingIds = data.filter(a => !embMap.has(a.id)).map(a => a.id)
     for (let i = 0; i < missingIds.length; i += PACK_EMB_CHUNK) {
         const chunk = missingIds.slice(i, i + PACK_EMB_CHUNK)
@@ -811,6 +814,9 @@ export default {
         }
 
         let embedded = 0
+        // 今回計算した量子化済み埋め込み（id → base64）。パック生成でDBから
+        // 取り直さずに再利用し、サブリクエストを節約する
+        const freshEmb = new Map<string, string>()
         if (pending && pending.length > 0) {
             for (let i = 0; i < pending.length; i += EMBED_CHUNK) {
                 const chunk = pending.slice(i, i + EMBED_CHUNK)
@@ -827,6 +833,10 @@ export default {
                     }))
                     const { error: upErr } = await supabase.from('articles').upsert(rows, { onConflict: 'id' })
                     if (upErr) throw upErr
+                    for (let k = 0; k < chunk.length; k++) {
+                        const b64 = quantizeToBase64(vecs[k])
+                        if (b64) freshEmb.set(chunk[k].id, b64)
+                    }
                     embedded += chunk.length
                 } catch (e) {
                     // 失敗チャンクで打ち切り、残りは次回実行で再試行（部分的な前進は保持）
@@ -889,11 +899,12 @@ export default {
         }
 
         // 5. パック生成 → R2
-        //    新規処理があったとき、または latest.json が未生成のときに更新する
+        //    新規処理があったとき、または latest.json が未生成のときに更新する。
+        //    今回計算した埋め込み(freshEmb)を渡し、DBから取り直さない（サブリクエスト節約）
         if (env.PACK_BUCKET) {
             const needsPack = processedCount > 0 || !(await env.PACK_BUCKET.head('pack/latest.json'))
             if (needsPack) {
-                ctx.waitUntil(generateAndUploadPack(supabase, env.PACK_BUCKET))
+                ctx.waitUntil(generateAndUploadPack(supabase, env.PACK_BUCKET, freshEmb))
             } else {
                 console.log('Pack is up to date, skipping upload.')
             }
@@ -911,7 +922,9 @@ export default {
         // 7. 研究用アーカイブ + retention（30日より古い日をR2へ退避してDBから削除）
         //    DBは「直近のホットデータ専用」に保ち、テーブル肥大化による
         //    statement timeout 障害（2026-07-13）の根本原因を断つ。
-        if (env.PACK_BUCKET) {
+        //    サブリクエストを多く使うため毎時1回（:00の実行）だけに絞る。
+        //    1日24回動けば、退避すべき日（1日1つ）の消化には十分。
+        if (env.PACK_BUCKET && new Date().getUTCMinutes() < 30) {
             ctx.waitUntil(archiveAndPruneOldest(supabase, env.PACK_BUCKET))
         }
     }
