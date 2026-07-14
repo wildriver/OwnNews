@@ -27,34 +27,32 @@ OwnNews は、ニュースを「食事」になぞらえて情報摂取のバラ
 ## 1. System Architecture
 
 ```mermaid
-flowchart LR
-    subgraph SERVER["サーバー側 — 共通データの準備だけ"]
-        direction TB
-        RSS["ニュースソース<br/>CEEK.JP NEWS ＋ NHK/ITmedia 等"]
-        COL["collector.py<br/>GitHub Actions・1日5回<br/>礼儀ある間隔でRSS収集"]
-        DB[("Supabase<br/>記事DB・直近30日")]
-        WK["Cloudflare Worker<br/>BGE-M3 埋め込み ＋ LLM解析<br/>記事パック生成"]
-        R2[("Cloudflare R2<br/>pack/latest.json")]
-        ARC[("R2 研究用アーカイブ<br/>archive/daily/…")]
+flowchart TD
+    subgraph SERVER["サーバー側（共通データの準備だけ）"]
+        RSS["ニュースソース: CEEK.JP NEWS + NHK/ITmedia 等"]
+        COL["collector.py（GitHub Actions・1日5回）"]
+        DB[("Supabase 記事DB（直近30日）")]
+        WK["Cloudflare Worker: BGE-M3埋め込み + LLM解析 + パック生成"]
+        R2[("Cloudflare R2: pack/latest.json")]
+        ARC[("R2 研究用アーカイブ archive/daily")]
         RSS --> COL --> DB --> WK --> R2
-        DB -. "30日超は退避後に削除" .-> ARC
+        DB -.->|"30日超は退避後に削除"| ARC
     end
 
-    R2 == "CDN配信（egress無料）" ==> CACHE
+    R2 -->|"CDN配信・egress無料"| CACHE
 
-    subgraph BROWSER["あなたの端末の中 — 学習・推薦はここ"]
-        direction TB
-        CACHE["記事パック<br/>IndexedDBキャッシュ"]
-        BEHAVE["閲覧行動<br/>滞在時間・スクロール・操作"]
-        ENGINE["推薦エンジン<br/>関心ベクトル学習・コサイン類似度<br/>バブル分類・トピック集約"]
-        FEED["フィード<br/>あなたのバブル ／ 世間の窓"]
+    subgraph BROWSER["あなたの端末の中（学習・推薦はここ）"]
+        CACHE["記事パック（IndexedDBキャッシュ）"]
+        BEHAVE["閲覧行動: 滞在時間・スクロール・操作"]
+        ENGINE["推薦エンジン: 関心ベクトル学習・コサイン類似度・バブル分類"]
+        FEED["フィード: あなたのバブル / 世間の窓"]
         CACHE --> ENGINE
         BEHAVE --> ENGINE
         ENGINE --> FEED
     end
 
-    ENGINE <-. "同期（本人のみ・RLS）" .-> VAULT[("アカウント保管庫<br/>Supabase・本人だけ読める")]
-    WK -. "匿名の集計のみ" .-> ADMIN["運営ダッシュボード"]
+    ENGINE -.->|"同期・本人のみRLS"| VAULT[("アカウント保管庫（本人だけ読める）")]
+    WK -.->|"匿名の集計のみ"| ADMIN["運営ダッシュボード"]
 ```
 
 ### 1.1 Components
