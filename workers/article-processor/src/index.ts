@@ -82,6 +82,18 @@ interface CategorizationResult {
 /** パックに含める記事数（直近） */
 const PACK_SIZE = 800
 
+/** 1回の実行で埋め込みを生成する最大件数。
+ *  記事はパックに載るのに埋め込みだけを必要とするため、ここがニュースの表示速度を決める。
+ *  以前は50件（＝時速100件）しかなく、1回の収集で1000件超入るとフィードが数時間遅れた。
+ *  BGE-M3は安価・高速なので大きく回す（EMBED_CHUNK件ずつAIに投げる）。 */
+const EMBED_LIMIT = 400
+const EMBED_CHUNK = 50
+
+/** 1回の実行でLLM解析（栄養素・中分類・キーワード）する最大件数。
+ *  さくらの無料枠(3,000req/月)に収めるため絞る: 24件 → バッチ12で2req/回 → 約96req/日。
+ *  解析が遅れてもニュースの表示自体は止まらない（スコアは後追いで埋まる）。 */
+const ANALYZE_LIMIT = 24
+
 /** RSS summaryのHTMLタグ・エンティティを除去してプレーンテキスト化する（web側 stripHtml と対） */
 function stripHtml(input: string): string {
     if (!input) return ''
@@ -776,80 +788,65 @@ export default {
 
         const supabase = createClient(supabaseUrl, (env.SUPABASE_KEY || '').trim())
 
-        // 1. Fetch unprocessed articles (limit 50)
-        const { data: articles, error } = await supabase
+        let processedCount = 0
+
+        // ============================================================
+        // 1. 埋め込み生成（速い経路 = ニュースがフィードに出るための必須処理）
+        //    記事はパックに載るのに「埋め込み」だけを必要とし、栄養素スコアは
+        //    後から埋めればよい。以前は埋め込みとLLM解析を同じループに縛って
+        //    1回50件しか進めず、収集1000件超に対して時速100件しか処理できず
+        //    ニュースが数時間遅れて表示される致命的な遅延を招いていた。
+        //    埋め込み(BGE-M3)は安価・高速なので大きく回し、遅いLLM解析からは切り離す。
+        // ============================================================
+        const { data: pending, error: pendErr } = await supabase
             .from('articles')
-            .select('*')
+            .select('id, title, link, summary')
             .is('embedding_m3', null)
             .order('collected_at', { ascending: false })
-            .limit(50)
+            .limit(EMBED_LIMIT)
 
-        if (error) {
-            console.error('Supabase fetch error:', error)
+        if (pendErr) {
+            console.error('Pending fetch error:', pendErr)
             return
         }
 
-        let processedCount = 0
-
-        if (articles && articles.length > 0) {
-            console.log(`Processing ${articles.length} articles...`)
-
-            // 2. Generate Embeddings (BGE-M3)
-            const texts = articles.map(a => `${a.title} ${a.summary || ''}`.trim())
-            let embeddings: number[][] = []
-            try {
-                const embeddingResponse = await env.AI.run('@cf/baai/bge-m3', { text: texts })
-                if (embeddingResponse && embeddingResponse.data) {
-                    embeddings = embeddingResponse.data
-                } else {
-                    throw new Error('Invalid embedding response format')
+        let embedded = 0
+        if (pending && pending.length > 0) {
+            for (let i = 0; i < pending.length; i += EMBED_CHUNK) {
+                const chunk = pending.slice(i, i + EMBED_CHUNK)
+                try {
+                    const texts = chunk.map(a => `${a.title} ${a.summary || ''}`.trim())
+                    const res = await env.AI.run('@cf/baai/bge-m3', { text: texts })
+                    const vecs: number[][] | undefined = res?.data
+                    if (!vecs || vecs.length !== chunk.length) {
+                        throw new Error(`embedding count mismatch: got ${vecs?.length}, want ${chunk.length}`)
+                    }
+                    // 埋め込みだけを更新（title/linkはNOT NULL列なのでupsertのINSERT節用に必須）
+                    const rows = chunk.map((a, idx) => ({
+                        id: a.id, title: a.title, link: a.link, embedding_m3: vecs[idx],
+                    }))
+                    const { error: upErr } = await supabase.from('articles').upsert(rows, { onConflict: 'id' })
+                    if (upErr) throw upErr
+                    embedded += chunk.length
+                } catch (e) {
+                    // 失敗チャンクで打ち切り、残りは次回実行で再試行（部分的な前進は保持）
+                    console.error(`Embedding chunk ${i / EMBED_CHUNK} failed:`, e)
+                    break
                 }
-            } catch (e) {
-                console.error('Embedding generation error:', e)
-                return
             }
-
-            if (embeddings.length !== articles.length) {
-                console.error(`Embedding count mismatch: got ${embeddings.length}, expected ${articles.length}`)
-                return
-            }
-
-            // 3. Categorize & Analyze Nutrients（8件ずつのサブバッチ、失敗時Groq）
-            const categoryMap = await analyzeArticles(env, articles)
-
-            // 4. Update Supabase
-            const updates = articles.map((a, index) => {
-                const catData = categoryMap[a.id] || {}
-                return {
-                    ...a, // Spread all existing fields
-                    embedding_m3: embeddings[index],
-                    category_medium: catData.category_medium || a.category_medium,
-                    category_minor: catData.category_minor || a.category_minor,
-                    // LLM応答に含まれなかった記事は既存スコアを保持する（nullで上書きしない）
-                    fact_score: catData.fact_score ?? a.fact_score ?? null,
-                    context_score: catData.context_score ?? a.context_score ?? null,
-                    perspective_score: catData.perspective_score ?? a.perspective_score ?? null,
-                    emotion_score: catData.emotion_score ?? a.emotion_score ?? null,
-                    immediacy_score: catData.immediacy_score ?? a.immediacy_score ?? null,
-                }
-            })
-
-            const { error: updateError } = await supabase
-                .from('articles')
-                .upsert(updates, { onConflict: 'id' })
-
-            if (updateError) {
-                console.error('Bulk update error:', updateError)
-            } else {
-                processedCount = updates.length
-                console.log(`Successfully updated ${updates.length} articles.`)
-            }
+            processedCount += embedded
+            console.log(`Embedded ${embedded}/${pending.length} articles (pending was capped at ${EMBED_LIMIT})`)
         } else {
-            console.log('No articles to process.')
+            console.log('No articles to embed.')
         }
 
-        // 3.5 栄養素バックフィル: 埋め込みはあるが栄養素が未生成の記事を分析する。
-        //     （新規記事の埋め込み処理とは別に、過去の解析失敗分を毎回32件ずつ埋めていく）
+        // ============================================================
+        // 2. LLM解析（遅い経路 = 栄養素・中分類・キーワードの付与）
+        //    埋め込み済みで栄養素が未生成の記事を、新しい順に少しずつ解析する。
+        //    さくらの無料枠（3,000req/月）に収まるよう1回の件数を絞る
+        //    （ANALYZE_LIMIT=24 → バッチ12で2req/回 → 約96req/日）。
+        //    ここが遅れてもニュースの表示は止まらない（スコアは後追いで埋まる）。
+        // ============================================================
         try {
             const { data: needScore } = await supabase
                 .from('articles')
@@ -857,10 +854,9 @@ export default {
                 .not('embedding_m3', 'is', null)
                 .is('fact_score', null)
                 .order('collected_at', { ascending: false })
-                .limit(32)
+                .limit(ANALYZE_LIMIT)
 
             if (needScore && needScore.length > 0) {
-                console.log(`Backfilling nutrients for ${needScore.length} articles...`)
                 const map = await analyzeArticles(env, needScore as Article[])
                 const rows = needScore
                     .filter(a => map[a.id])
@@ -881,15 +877,15 @@ export default {
                     })
                 if (rows.length > 0) {
                     const { error: bfError } = await supabase.from('articles').upsert(rows, { onConflict: 'id' })
-                    if (bfError) console.error('Backfill update error:', bfError)
+                    if (bfError) console.error('Analysis update error:', bfError)
                     else {
                         processedCount += rows.length
-                        console.log(`Backfilled nutrients for ${rows.length} articles.`)
+                        console.log(`Analyzed ${rows.length}/${needScore.length} articles.`)
                     }
                 }
             }
         } catch (e) {
-            console.error('Nutrient backfill error:', e)
+            console.error('Analysis error:', e)
         }
 
         // 5. パック生成 → R2
