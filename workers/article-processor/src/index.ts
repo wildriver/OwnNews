@@ -90,9 +90,16 @@ const EMBED_LIMIT = 400
 const EMBED_CHUNK = 50
 
 /** 1回の実行でLLM解析（栄養素・中分類・キーワード）する最大件数。
- *  さくらの無料枠(3,000req/月)に収めるため絞る: 24件 → バッチ12で2req/回 → 約96req/日。
- *  解析が遅れてもニュースの表示自体は止まらない（スコアは後追いで埋まる）。 */
-const ANALYZE_LIMIT = 24
+ *  解析が遅れてもニュース表示は止まらないが、遅すぎると話題キーワードや
+ *  栄養素スコアが空のままになるため、バーストに追随できる量を確保する
+ *  （48件 × 48実行/日 = 日次2,300件）。 */
+const ANALYZE_LIMIT = 48
+
+/** そのうち「さくら」を使ってよいサブバッチ数（1実行あたり）。
+ *  さくらの無料枠は月3,000リクエストなので使い切らないよう固定する:
+ *  2バッチ/回 × 48実行/日 ≒ 96req/日 ≒ 2,880req/月 → 枠内。
+ *  これを超えるバッチは さくらを飛ばして Groq（無料・大容量）へ直接回す。 */
+const SAKURA_BATCHES_PER_RUN = 2
 
 /** RSS summaryのHTMLタグ・エンティティを除去してプレーンテキスト化する（web側 stripHtml と対） */
 function stripHtml(input: string): string {
@@ -228,20 +235,34 @@ const ANALYSIS_SUBBATCH = 8
  *  大きめにして月3,000リクエスト枠を節約する。JSON解析失敗が増えるようなら12→8に戻す。 */
 const ANALYSIS_SUBBATCH_SAKURA = 12
 
-async function analyzeArticles(env: Env, articles: Article[]): Promise<Record<string, CategorizationResult>> {
+/**
+ * @param sakuraBatchBudget この呼び出しでさくらを使ってよいサブバッチ数。
+ *   さくらは無料枠が「月3,000リクエスト」なので、1実行あたりの使用数を固定して
+ *   温存する（2バッチ/回 × 48実行/日 ≒ 96req/日 ≒ 2,880req/月 で枠内）。
+ *   これを超えるぶんは さくらを飛ばして Groq（無料・大容量）へ直接回すことで、
+ *   さくらを使い切らずに解析スループットだけを上げられる。
+ */
+async function analyzeArticles(
+    env: Env,
+    articles: Article[],
+    sakuraBatchBudget: number = Number.POSITIVE_INFINITY,
+): Promise<Record<string, CategorizationResult>> {
     const result: Record<string, CategorizationResult> = {}
     const subbatch = env.SAKURA_API_KEY ? ANALYSIS_SUBBATCH_SAKURA : ANALYSIS_SUBBATCH
     for (let i = 0; i < articles.length; i += subbatch) {
         const chunk = articles.slice(i, i + subbatch)
+        const batchIndex = i / subbatch
+        // さくら枠を使い切ったバッチは、さくらを試さずGroqへ直行する（枠の温存）
+        const useSakura = !!env.SAKURA_API_KEY && batchIndex < sakuraBatchBudget
         let map: Record<string, CategorizationResult> = {}
-        // 解析チェーン: さくら gpt-oss-120b（主力・リクエスト数制なのでバッチ大きめ）
+        // 解析チェーン: さくら gpt-oss-120b（主力・枠内のバッチのみ）
         //   → Groq 70B → Workers AI 8B。どの段でも同じ検証フィルタが効く。
         try {
-            if (!env.SAKURA_API_KEY) throw new Error('SAKURA_API_KEY not set')
-            map = await analyzeWithSakura(env.SAKURA_API_KEY, env.SAKURA_MODEL || 'gpt-oss-120b', chunk)
+            if (!useSakura) throw new Error('sakura skipped (budget preserved)')
+            map = await analyzeWithSakura(env.SAKURA_API_KEY!, env.SAKURA_MODEL || 'gpt-oss-120b', chunk)
             if (Object.keys(map).length === 0) throw new Error('Sakura returned no parseable results')
         } catch (se) {
-            if (env.SAKURA_API_KEY) console.error(`Sakura analysis failed for chunk ${i / subbatch}:`, se)
+            if (useSakura) console.error(`Sakura analysis failed for chunk ${i / subbatch}:`, se)
             try {
                 if (!env.GROQ_API_KEY) throw new Error('GROQ_API_KEY not set')
                 map = await analyzeWithGroq(env.GROQ_API_KEY, chunk)
@@ -867,7 +888,8 @@ export default {
                 .limit(ANALYZE_LIMIT)
 
             if (needScore && needScore.length > 0) {
-                const map = await analyzeArticles(env, needScore as Article[])
+                // さくらは SAKURA_BATCHES_PER_RUN バッチまで（枠の温存）。残りはGroqへ
+                const map = await analyzeArticles(env, needScore as Article[], SAKURA_BATCHES_PER_RUN)
                 const rows = needScore
                     .filter(a => map[a.id])
                     .map(a => {
