@@ -95,6 +95,12 @@ const EMBED_CHUNK = 50
  *  （48件 × 48実行/日 = 日次2,300件）。 */
 const ANALYZE_LIMIT = 48
 
+/** 解析対象を直近何日分に絞るか。時間で絞らないと
+ *  「embedding_m3 IS NOT NULL AND fact_score IS NULL」が肥大化したテーブルの
+ *  全スキャンになり statement timeout する（＝無言で解析ゼロになっていた原因）。
+ *  パックは直近しか配らないので、古い未解析記事を追いかける必要もない。 */
+const ANALYZE_WINDOW_DAYS = 3
+
 /** そのうち「さくら」を使ってよいサブバッチ数（1実行あたり）。
  *  さくらの無料枠は月3,000リクエストなので使い切らないよう固定する:
  *  2バッチ/回 × 48実行/日 ≒ 96req/日 ≒ 2,880req/月 → 枠内。
@@ -879,15 +885,27 @@ export default {
         //    ここが遅れてもニュースの表示は止まらない（スコアは後追いで埋まる）。
         // ============================================================
         try {
-            const { data: needScore } = await supabase
+            // 直近ANALYZE_WINDOW_DAYS日に限定する。時間で絞らないと
+            // 「embedding_m3 IS NOT NULL AND fact_score IS NULL」が肥大化した
+            // テーブル全体のスキャンになり statement timeout していた（無言で解析ゼロ）。
+            // collected_at のインデックスに乗るので軽い。パックは直近しか配らないため
+            // 古い未解析記事を追いかける必要もない。
+            const analyzeSince = new Date(Date.now() - ANALYZE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString()
+            const { data: needScore, error: nsErr } = await supabase
                 .from('articles')
                 .select('id, title, link, summary, category_medium, category_minor')
+                .gte('collected_at', analyzeSince)
                 .not('embedding_m3', 'is', null)
                 .is('fact_score', null)
                 .order('collected_at', { ascending: false })
                 .limit(ANALYZE_LIMIT)
 
-            if (needScore && needScore.length > 0) {
+            // エラーを握りつぶさない（以前はここが無言で失敗し解析が全く走らなかった）
+            if (nsErr) {
+                console.error('Analysis fetch error:', nsErr)
+            } else if (!needScore || needScore.length === 0) {
+                console.log('No articles to analyze.')
+            } else {
                 // さくらは SAKURA_BATCHES_PER_RUN バッチまで（枠の温存）。残りはGroqへ
                 const map = await analyzeArticles(env, needScore as Article[], SAKURA_BATCHES_PER_RUN)
                 const rows = needScore
@@ -914,6 +932,9 @@ export default {
                         processedCount += rows.length
                         console.log(`Analyzed ${rows.length}/${needScore.length} articles.`)
                     }
+                } else {
+                    // LLMが3段とも失敗した場合。無言にせず必ず記録する
+                    console.error(`Analysis produced no results for ${needScore.length} articles.`)
                 }
             }
         } catch (e) {
