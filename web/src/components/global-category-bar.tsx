@@ -35,7 +35,7 @@ export function GlobalCategoryBar({ data }: GlobalCategoryBarProps) {
         <Card className="border-border bg-card">
             <CardHeader>
                 <CardTitle className="text-lg font-bold text-foreground">いま配信中の記事の母集団</CardTitle>
-                <CardDescription>あなたの端末に届いている記事パックのジャンル分布 — {total.toLocaleString()} 件</CardDescription>
+                <CardDescription>配信記事全体の比率に合わせてサンプリングした {total.toLocaleString()} 件の分布</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="space-y-3">
