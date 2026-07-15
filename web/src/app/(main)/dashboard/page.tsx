@@ -35,7 +35,8 @@ import {
     computeHourlyDistribution,
     Period,
 } from '@/lib/client/health-local'
-import { getAllInteractions, getAllArticles } from '@/lib/client/store'
+import { getAllInteractions } from '@/lib/client/store'
+import { loadArticles } from '@/lib/client/pack'
 import { LocalInteraction, PackArticle } from '@/lib/client/types'
 import { SYNCED_EVENT } from '@/lib/client/sync'
 import { Loader2 } from 'lucide-react'
@@ -48,13 +49,16 @@ export default function DashboardPage() {
 
     useEffect(() => {
         let cancelled = false
-        const load = () => Promise.all([getAllInteractions(), getAllArticles()]).then(([ints, arts]) => {
+        const load = async () => {
+            const [ints, arts] = await Promise.all([
+                getAllInteractions(),
+                loadArticles((updated) => { if (!cancelled) setArticles(updated) }),
+            ])
             if (cancelled) return
             setInteractions(ints)
             setArticles(arts)
-        })
+        }
         load()
-        // 運営Supabaseからの同期完了で最新化
         window.addEventListener(SYNCED_EVENT, load)
         return () => { cancelled = true; window.removeEventListener(SYNCED_EVENT, load) }
     }, [])
