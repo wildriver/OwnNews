@@ -81,6 +81,9 @@ interface CategorizationResult {
 
 /** パックに含める記事数（直近） */
 const PACK_SIZE = 800
+/** 層化サンプリング用の内部プール。全カテゴリに均等枠を割り当てるため、
+ *  PACK_SIZE より多く取得してからカテゴリごとに選別する。 */
+const PACK_POOL_SIZE = 2500
 
 /** 1回の実行で埋め込みを生成する最大件数。
  *  記事はパックに載るのに埋め込みだけを必要とするため、ここがニュースの表示速度を決める。
@@ -487,6 +490,52 @@ const PACK_META_COLUMNS = 'id, title, link, summary, published, category, catego
  *  そのため埋め込みは「旧パックに無い記事」だけを少数ずつ取得する。 */
 const PACK_EMB_CHUNK = 20
 
+/** カテゴリ均等化のための層化サンプリング。
+ *  全カテゴリに均等に枠を配分し、不足カテゴリの余り枠は他のカテゴリの新しい記事で補充。
+ *  pool は collected_at desc 順であることを前提とする。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function stratifiedSample(pool: any[], targetSize: number): any[] {
+    if (pool.length <= targetSize) return pool
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const byCategory = new Map<string, any[]>()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const uncategorized: any[] = []
+
+    for (const a of pool) {
+        const cat = (a.category || '').split(',')[0].trim()
+        if (!cat) { uncategorized.push(a); continue }
+        if (!byCategory.has(cat)) byCategory.set(cat, [])
+        byCategory.get(cat)!.push(a)
+    }
+
+    const numCategories = byCategory.size
+    if (numCategories === 0) return pool.slice(0, targetSize)
+
+    const quota = Math.floor(targetSize / numCategories)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const selected: any[] = []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const overflow: any[] = []
+
+    for (const [, articles] of byCategory) {
+        selected.push(...articles.slice(0, quota))
+        if (articles.length > quota) {
+            overflow.push(...articles.slice(quota))
+        }
+    }
+
+    const remaining = targetSize - selected.length
+    if (remaining > 0) {
+        overflow.push(...uncategorized)
+        overflow.sort((a, b) => (b.collected_at || '').localeCompare(a.collected_at || ''))
+        selected.push(...overflow.slice(0, remaining))
+    }
+
+    console.log(`Stratified sample: pool=${pool.length}, categories=${numCategories}, quota=${quota}, selected=${selected.length}`)
+    return selected
+}
+
 // ---- 研究用アーカイブ + retention ----
 // 記事原本はCEEK.JP NEWS側に存在するため、アプリのDBは直近分だけでよい。
 // 研究用の全データはR2に日次JSONで退避してから、DBの古い行を削除する。
@@ -660,8 +709,8 @@ async function generateAndUploadPack(
     const topMs = Date.parse(head[0].collected_at) + 1
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any[] = []
-    for (let k = 0; k < PACK_META_MAX_SLICES && data.length < PACK_SIZE; k++) {
+    const pool: any[] = []
+    for (let k = 0; k < PACK_META_MAX_SLICES && pool.length < PACK_POOL_SIZE; k++) {
         const sliceTop = new Date(topMs - k * PACK_META_SLICE_MS).toISOString()
         const sliceBottom = new Date(topMs - (k + 1) * PACK_META_SLICE_MS).toISOString()
         const { data: page, error } = await supabase
@@ -671,16 +720,18 @@ async function generateAndUploadPack(
             .lt('collected_at', sliceTop)
             .gte('collected_at', sliceBottom)
             .order('collected_at', { ascending: false })
-            .limit(PACK_SIZE - data.length)
+            .limit(Math.min(1000, PACK_POOL_SIZE - pool.length))
 
         if (error) {
-            // 失敗したスライスは飛ばして続行（そこだけ欠けた縮小パックになる）
             console.error(`Pack meta slice ${k} error:`, error)
             continue
         }
-        if (page) data.push(...page)
+        if (page) pool.push(...page)
     }
-    if (data.length === 0) return
+    if (pool.length === 0) return
+
+    // カテゴリ均等化: DB配分比率に合わせて層化サンプリング
+    const data = stratifiedSample(pool, PACK_SIZE)
 
     // 2. 旧パックから量子化済み埋め込みを回収（id → base64）。R2はタイムアウトしない
     const embMap = new Map<string, string>()
