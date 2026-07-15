@@ -490,8 +490,10 @@ const PACK_META_COLUMNS = 'id, title, link, summary, published, category, catego
  *  そのため埋め込みは「旧パックに無い記事」だけを少数ずつ取得する。 */
 const PACK_EMB_CHUNK = 20
 
-/** カテゴリ均等化のための層化サンプリング。
- *  全カテゴリに均等に枠を配分し、不足カテゴリの余り枠は他のカテゴリの新しい記事で補充。
+/** プール全体の比率に比例した層化サンプリング。
+ *  プール（2500件≒20時間分）の各カテゴリ比率をそのまま800件に縮小する。
+ *  単純な newest-800 だと短期的な出稿バーストで偏るが、
+ *  より広い時間窓のプール比率を使うことで長期平均に近い配分になる。
  *  pool は collected_at desc 順であることを前提とする。 */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function stratifiedSample(pool: any[], targetSize: number): any[] {
@@ -512,27 +514,34 @@ function stratifiedSample(pool: any[], targetSize: number): any[] {
     const numCategories = byCategory.size
     if (numCategories === 0) return pool.slice(0, targetSize)
 
-    const quota = Math.floor(targetSize / numCategories)
+    // プール比率に比例して枠を配分（各カテゴリの新しい順に採用）
+    const categorizedTotal = pool.length - uncategorized.length
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const selected: any[] = []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const overflow: any[] = []
+    const quotas: string[] = []
 
-    for (const [, articles] of byCategory) {
+    for (const [cat, articles] of byCategory) {
+        const quota = Math.round(targetSize * articles.length / categorizedTotal)
+        quotas.push(`${cat}:${quota}/${articles.length}`)
         selected.push(...articles.slice(0, quota))
         if (articles.length > quota) {
             overflow.push(...articles.slice(quota))
         }
     }
 
-    const remaining = targetSize - selected.length
-    if (remaining > 0) {
+    // 端数調整（Math.round の合計が targetSize と一致しない場合）
+    if (selected.length < targetSize) {
         overflow.push(...uncategorized)
         overflow.sort((a, b) => (b.collected_at || '').localeCompare(a.collected_at || ''))
-        selected.push(...overflow.slice(0, remaining))
+        selected.push(...overflow.slice(0, targetSize - selected.length))
+    } else if (selected.length > targetSize) {
+        selected.sort((a, b) => (b.collected_at || '').localeCompare(a.collected_at || ''))
+        selected.length = targetSize
     }
 
-    console.log(`Stratified sample: pool=${pool.length}, categories=${numCategories}, quota=${quota}, selected=${selected.length}`)
+    console.log(`Stratified sample: pool=${pool.length}, categories=${numCategories}, selected=${selected.length} [${quotas.join(', ')}]`)
     return selected
 }
 
