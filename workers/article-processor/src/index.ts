@@ -481,8 +481,13 @@ async function computeHotKeywords(
  *  offsetページングはoffsetが深くなるほどインデックス歩行が伸び、テーブル肥大化した
  *  現状ではoffset400（3ページ目）で statement timeout になった（2026-07-13の障害）。
  *  collected_at の範囲指定ならインデックスレンジスキャンで、深さに関わらず一定コスト。 */
-const PACK_META_SLICE_MS = 6 * 60 * 60 * 1000
-const PACK_META_MAX_SLICES = 12
+// スライス幅は3時間。6時間だと1スライスに約1,500件入り、PostgRESTの1000行上限で
+// 各スライスの古い側が切り捨てられていた。収集はバースト的（同カテゴリが同じ収集回に
+// 固まる）ため、この切り捨てがカテゴリと相関し、層化サンプリングの母比率を歪めていた
+// （2026-07-16: 政治5.6%→2.9%、スポーツ6.9%→4.8%と過小になる偏りを確認）。
+// 3時間なら約775件/スライスで上限に収まる。遡り時間は 3h×24=72h で従来と同じ。
+const PACK_META_SLICE_MS = 3 * 60 * 60 * 1000
+const PACK_META_MAX_SLICES = 24
 const PACK_META_COLUMNS = 'id, title, link, summary, published, category, category_medium, category_minor, image_url, source, fact_score, context_score, perspective_score, emotion_score, immediacy_score, collected_at'
 /** 埋め込み取得の1文あたり件数。
  *  埋め込み列（1024次元×約15KB）はテーブル肥大化により、100件の一括読み出しでも
