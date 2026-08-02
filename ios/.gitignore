@@ -1,5 +1,6 @@
 # ビルド成果物
 build/
+build-device/
 DerivedData/
 
 # xcodegenで生成される（project.ymlから再生成可能）
