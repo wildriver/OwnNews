@@ -30,3 +30,4 @@ targets:
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: LP34H67XY3
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
