@@ -31,9 +31,43 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                 DispatchQueue.main.async {
                     application.registerForRemoteNotifications()
                 }
+                Self.scheduleDailyNotifications()
             }
         }
         return true
+    }
+
+    /// 毎日の定時通知（ローカル通知）。サーバ不要で「ニュースを読むきっかけ」を作る。
+    /// 動的な内容（見落としニュース等）を送りたくなったらAPNsリモートPushに置き換える。
+    static func scheduleDailyNotifications() {
+        let slots: [(hour: Int, title: String, body: String)] = [
+            (8,  "朝のニュース", "おはようございます。今朝の世の中の動きをチェックしましょう"),
+            (12, "昼のニュース", "昼休みのひとときに、午前中のニュースをどうぞ"),
+            (15, "午後のニュース", "午後のニュースが届いています。少し息抜きしませんか"),
+            (18, "夕方のニュース", "今日の主要ニュースを夕方のうちにおさらいしましょう"),
+            (22, "夜のニュース", "一日の締めくくりに、今日のニュースを振り返りましょう"),
+        ]
+        let center = UNUserNotificationCenter.current()
+        // 再起動のたびに予約し直す（重複防止のため既存の予約を全消しして入れ直す）
+        center.removeAllPendingNotificationRequests()
+        for slot in slots {
+            let content = UNMutableNotificationContent()
+            content.title = slot.title
+            content.body = slot.body
+            content.sound = .default
+            content.userInfo = ["url": "https://ownnews-web.pages.dev/"]
+
+            var date = DateComponents()
+            date.hour = slot.hour
+            date.minute = 0
+            let trigger = UNCalendarNotificationTrigger(dateMatching: date, repeats: true)
+            let request = UNNotificationRequest(
+                identifier: "daily-news-\(slot.hour)",
+                content: content,
+                trigger: trigger
+            )
+            center.add(request)
+        }
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

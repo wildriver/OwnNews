@@ -33,6 +33,8 @@ export default function SettingsPage() {
     const [syncing, setSyncing] = useState(false)
     const [pushState, setPushState] = useState<'unsupported' | 'denied' | 'subscribed' | 'unsubscribed'>('unsupported')
     const [pushBusy, setPushBusy] = useState(false)
+    // iOSラッパーアプリ内（UAに OwnNewsApp）。Web Pushの代わりにネイティブのローカル通知が使われる
+    const [isNativeApp, setIsNativeApp] = useState(false)
 
     const reload = async () => {
         const [ints, arts, vec, str, syncMs] = await Promise.all([
@@ -53,6 +55,7 @@ export default function SettingsPage() {
     useEffect(() => {
         getUserEmail().then(e => setEmail(e ?? ''))
         reload()
+        setIsNativeApp(navigator.userAgent.includes('OwnNewsApp'))
         getSubscriptionState().then(setPushState)
         window.addEventListener(SYNCED_EVENT, reload)
         return () => window.removeEventListener(SYNCED_EVENT, reload)
@@ -246,9 +249,21 @@ export default function SettingsPage() {
                             毎日のニュース通知
                         </CardTitle>
                         <CardDescription className="text-[12px]">
-                            新しいニュースが届いたら、毎朝1回プッシュ通知でお知らせします。
+                            {isNativeApp
+                                ? 'ニュースを読むきっかけとして、毎日決まった時刻にお知らせします。'
+                                : '新しいニュースが届いたら、毎朝1回プッシュ通知でお知らせします。'}
                         </CardDescription>
                     </CardHeader>
+                    {isNativeApp ? (
+                        <CardContent className="space-y-2">
+                            <p className="text-[13px]">
+                                毎日 <span className="font-medium text-foreground">8時・12時・15時・18時・22時</span> に通知が届きます。
+                            </p>
+                            <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
+                                通知のオン/オフは iPhoneの「設定 &gt; アプリ &gt; OwnNews &gt; 通知」から変更できます。
+                            </p>
+                        </CardContent>
+                    ) : (
                     <CardContent className="space-y-2">
                         <div className="flex items-center justify-between gap-3 flex-wrap">
                             <div className="text-[13px]">
@@ -280,6 +295,7 @@ export default function SettingsPage() {
                             ※ iPhoneのSafariでは、先に「ホーム画面に追加」してから開くと通知を受け取れます。
                         </p>
                     </CardContent>
+                    )}
                 </Card>
 
                 {/* 2. フィードの調整 */}
