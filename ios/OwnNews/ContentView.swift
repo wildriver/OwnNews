@@ -1,6 +1,8 @@
 import SwiftUI
 import WebKit
 import SafariServices
+import AuthenticationServices
+import CryptoKit
 
 private let APP_HOST = "ownnews-web.pages.dev"
 /// 起動時に開くURL。スクリーンショット撮影用に起動引数 -initialPath /welcome 等で上書きできる
@@ -30,6 +32,9 @@ struct WebView: UIViewRepresentable {
         // UAに識別子を付与し、Web側が「ネイティブアプリ内」を検出できるようにする
         // （PWAインストール案内の非表示などに使う）
         config.applicationNameForUserAgent = "OwnNewsApp/1.0"
+        // Web側から Sign in with Apple を起動するブリッジ
+        // （ログインページが window.webkit.messageHandlers.appleSignIn.postMessage({}) を呼ぶ）
+        config.userContentController.add(context.coordinator, name: "appleSignIn")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -49,9 +54,14 @@ struct WebView: UIViewRepresentable {
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate,
+                             WKScriptMessageHandler,
+                             ASAuthorizationControllerDelegate,
+                             ASAuthorizationControllerPresentationContextProviding {
         weak var webView: WKWebView?
         private var observer: NSObjectProtocol?
+        /// Sign in with Apple のリプレイ攻撃対策nonce（生値）。ハッシュをAppleへ、生値をSupabaseへ渡す
+        private var appleNonce: String?
 
         override init() {
             super.init()
@@ -118,6 +128,71 @@ struct WebView: UIViewRepresentable {
                 .first?.rootViewController else { return }
             let safari = SFSafariViewController(url: url)
             root.present(safari, animated: true)
+        }
+
+        // ---- Sign in with Apple（Webからのブリッジ） ----
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "appleSignIn" else { return }
+            startAppleSignIn()
+        }
+
+        private func startAppleSignIn() {
+            let nonce = Self.randomNonce()
+            appleNonce = nonce
+            let request = ASAuthorizationAppleIDProvider().createRequest()
+            request.requestedScopes = [.fullName, .email]
+            request.nonce = Self.sha256(nonce)
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
+        }
+
+        func authorizationController(controller: ASAuthorizationController,
+                                     didCompleteWithAuthorization authorization: ASAuthorization) {
+            guard let cred = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let tokenData = cred.identityToken,
+                  let token = String(data: tokenData, encoding: .utf8),
+                  let nonce = appleNonce,
+                  let payload = try? JSONSerialization.data(withJSONObject: ["token": token, "nonce": nonce]),
+                  let json = String(data: payload, encoding: .utf8) else {
+                webView?.evaluateJavaScript("window.__onAppleSignInError && window.__onAppleSignInError()")
+                return
+            }
+            // Web側(supabase-js)が signInWithIdToken でセッションを確立する
+            webView?.evaluateJavaScript("window.__onAppleSignIn && window.__onAppleSignIn(\(json))")
+        }
+
+        func authorizationController(controller: ASAuthorizationController,
+                                     didCompleteWithError error: Error) {
+            // ユーザーによるキャンセルはエラー扱いにしない
+            if let e = error as? ASAuthorizationError, e.code == .canceled { return }
+            webView?.evaluateJavaScript("window.__onAppleSignInError && window.__onAppleSignInError()")
+        }
+
+        func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+            webView?.window ?? ASPresentationAnchor()
+        }
+
+        /// 英数字のランダムnonce（Firebase/Supabaseのサンプル実装に準拠）
+        private static func randomNonce(length: Int = 32) -> String {
+            let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+            var result = ""
+            while result.count < length {
+                var random: UInt8 = 0
+                guard SecRandomCopyBytes(kSecRandomDefault, 1, &random) == errSecSuccess else { continue }
+                if random < charset.count {
+                    result.append(charset[Int(random)])
+                }
+            }
+            return result
+        }
+
+        private static func sha256(_ input: String) -> String {
+            SHA256.hash(data: Data(input.utf8))
+                .map { String(format: "%02x", $0) }
+                .joined()
         }
     }
 }

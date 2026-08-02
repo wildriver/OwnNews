@@ -16,8 +16,19 @@
 - [x] アプリアイコン(1024px)
 - [x] ITSAppUsesNonExemptEncryption = false
 - [x] プライバシーポリシーページ(/privacy)
-- [ ] ⚠ **Sign in with Apple 実装**（Googleログイン併設のため必須。review-notes.md参照）
+- [x] ⚠ **Sign in with Apple 実装**（ネイティブASAuthorization + Supabase signInWithIdToken）
+- [ ] ⚠ Supabase Dashboard設定（ユーザー作業。下記「Sign in with Appleの設定」参照）
 - [ ] バージョン/ビルド番号の確認（1.0 / 1）
+
+### Sign in with Appleの設定（Supabase Dashboard・要ユーザー作業）
+
+1. https://supabase.com/dashboard → プロジェクト tcajofghsbskpstxpjwi
+2. Authentication → Sign In / Providers → Apple → **Enable**
+3. 「Client IDs」欄に `com.arakawa-lab.ownnews` を入力して保存
+   ※ ネイティブフロー(signInWithIdToken)のみ使うため、
+     Services ID・Secret Key（6ヶ月失効するJWT）は**不要**
+4. Apple Developer Portal側のApp ID capabilityは、次回の実機ビルド時に
+   `-allowProvisioningUpdates` が自動で追加する（手作業不要）
 
 ## 3. メタデータ入力（metadata.md からコピペ）
 

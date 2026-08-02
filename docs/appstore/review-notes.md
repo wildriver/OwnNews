@@ -18,10 +18,10 @@ KEY POINTS FOR REVIEW:
      vector is computed and stored locally and is never uploaded. This
      privacy-by-design architecture is the core research theme of the app.
 
-2. Login (demo account provided below):
+2. Login:
    - Google Sign-In and Sign in with Apple are both available.
-   - Demo account: [デモアカウントを用意してここに記載]
-   - Password: [パスワード]
+   - Reviewers can create an account instantly via Sign in with Apple.
+     No demo account is needed.
 
 3. No ads, no tracking, no in-app purchases. No ATT prompt is shown because
    we do not track users across apps or websites.
@@ -46,17 +46,18 @@ OwnNewsは大学研究室が開発する非営利のニュースリーダーで�
 
 ---
 
-## デモアカウントについて（要準備）
+## デモアカウントについて（不要）
 
-審査ではログインが必要な機能をすべて確認できる必要がある。
+Sign in with Appleを実装済みのため、審査員は自分のApple IDでその場で
+サインインしてすべての機能を確認できる。**デモアカウントの用意は不要**。
 
-- [ ] 審査用のGoogleアカウントを新規作成（例: ownnews.review@gmail.com）
-      ※2段階認証は**無効**にしておく（審査員がログインできなくなるため）
-- [ ] そのアカウントで一度ログインして動作確認
-- [ ] メールアドレス・パスワードを上記ノートに記載
+App Store Connectの「サインインが必要」欄は:
+- 「サインイン情報を提供」のチェックを**外し**、
+- 代わりに審査ノートに「Reviewers can create an account instantly via
+  Sign in with Apple. No demo account is needed.」と書く（上記ノートに含めてある）。
 
-※ Sign in with Apple実装後は、審査員は自分のApple IDで入れるので
-   デモアカウントの重要性は下がるが、記載しておくのが安全。
+※ もし審査員から「デモアカウントを出せ」と返ってきた場合のみ、
+   2段階認証を無効にしたGoogleアカウントを作って対応する。
 
 ---
 

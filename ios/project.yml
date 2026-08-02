@@ -12,6 +12,8 @@ targets:
       path: OwnNews/OwnNews.entitlements
       properties:
         aps-environment: development
+        com.apple.developer.applesignin:
+          - Default
     info:
       path: OwnNews/Info.plist
       properties:
