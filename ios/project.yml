@@ -1,0 +1,31 @@
+name: OwnNews
+options:
+  bundleIdPrefix: com.arakawalab
+  deploymentTarget:
+    iOS: "16.4"
+targets:
+  OwnNews:
+    type: application
+    platform: iOS
+    sources: [OwnNews]
+    entitlements:
+      path: OwnNews/OwnNews.entitlements
+      properties:
+        aps-environment: development
+    info:
+      path: OwnNews/Info.plist
+      properties:
+        CFBundleDisplayName: OwnNews
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIViewControllerBasedStatusBarAppearance: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.arakawalab.ownnews
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+        # 実機ビルド時はXcodeでチームを選択する（シミュレータは署名不要）
+        CODE_SIGN_STYLE: Automatic

@@ -1,0 +1,6 @@
+# ビルド成果物
+build/
+DerivedData/
+
+# xcodegenで生成される（project.ymlから再生成可能）
+OwnNews.xcodeproj/
