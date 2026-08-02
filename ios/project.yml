@@ -24,8 +24,9 @@ targets:
         UIViewControllerBasedStatusBarAppearance: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.arakawalab.ownnews
+        # com.arakawalab.ownnews は誤って旧アカウント(無料チーム)に登録され使用不可になったため変更
+        PRODUCT_BUNDLE_IDENTIFIER: com.arakawa-lab.ownnews
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
-        # 実機ビルド時はXcodeでチームを選択する（シミュレータは署名不要）
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: LP34H67XY3

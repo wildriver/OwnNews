@@ -27,6 +27,14 @@ function isStandalone(): boolean {
         || (navigator as unknown as { standalone?: boolean }).standalone === true
 }
 
+/** iOSラッパーアプリ（WKWebView）内かどうか。
+ *  アプリ側がUAに "OwnNewsApp" を付与している。アプリ内では
+ *  ホーム画面追加もWeb Pushも不要（通知はネイティブAPNs経路）なので案内を出さない。 */
+function isNativeApp(): boolean {
+    if (typeof navigator === 'undefined') return false
+    return navigator.userAgent.includes('OwnNewsApp')
+}
+
 function isIOS(): boolean {
     if (typeof navigator === 'undefined') return false
     const ua = navigator.userAgent
@@ -50,6 +58,8 @@ export function InstallPrompt() {
     const deferredPrompt = useRef<BeforeInstallPromptEvent | null>(null)
 
     useEffect(() => {
+        // ネイティブアプリ内では案内不要（通知はAPNs、ホーム画面追加も無意味）
+        if (isNativeApp()) return
         // 既に閉じた端末では何もしない
         try { if (localStorage.getItem(DISMISS_KEY)) return } catch { /* noop */ }
 

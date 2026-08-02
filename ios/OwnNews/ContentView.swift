@@ -20,6 +20,9 @@ struct WebView: UIViewRepresentable {
         // ログイン状態などを保持する永続ストア
         config.websiteDataStore = .default()
         config.allowsInlineMediaPlayback = true
+        // UAに識別子を付与し、Web側が「ネイティブアプリ内」を検出できるようにする
+        // （PWAインストール案内の非表示などに使う）
+        config.applicationNameForUserAgent = "OwnNewsApp/1.0"
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
