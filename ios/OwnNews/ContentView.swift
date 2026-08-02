@@ -2,8 +2,15 @@ import SwiftUI
 import WebKit
 import SafariServices
 
-private let APP_URL = URL(string: "https://ownnews-web.pages.dev/")!
 private let APP_HOST = "ownnews-web.pages.dev"
+/// 起動時に開くURL。スクリーンショット撮影用に起動引数 -initialPath /welcome 等で上書きできる
+private let APP_URL: URL = {
+    let args = CommandLine.arguments
+    if let i = args.firstIndex(of: "-initialPath"), i + 1 < args.count {
+        return URL(string: "https://\(APP_HOST)\(args[i + 1])")!
+    }
+    return URL(string: "https://\(APP_HOST)/")!
+}()
 
 struct ContentView: View {
     var body: some View {

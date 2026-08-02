@@ -12,8 +12,9 @@ struct OwnNewsApp: App {
 
     var body: some Scene {
         WindowGroup {
+            // 上部セーフエリアは尊重する（Webページの固定ヘッダーが
+            // ステータスバー/Dynamic Islandと重ならないように）。下はWebView側で処理
             ContentView()
-                .ignoresSafeArea()
         }
     }
 }
@@ -24,6 +25,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // スクリーンショット撮影時は許可ダイアログを出さない（simctl launch ... -uiScreenshots）
+        if CommandLine.arguments.contains("-uiScreenshots") { return true }
         // 通知許可はWebの購読ボタンからではなくアプリ起動時に求める
         // （箱アプリなのでネイティブUIは持たない方針）
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in

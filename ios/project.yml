@@ -22,6 +22,8 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIViewControllerBasedStatusBarAppearance: true
+        # 標準的なHTTPS/TLSのみ使用（輸出コンプライアンスの毎回質問をスキップ）
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         # com.arakawalab.ownnews は誤って旧アカウント(無料チーム)に登録され使用不可になったため変更
