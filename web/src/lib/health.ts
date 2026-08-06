@@ -136,17 +136,18 @@ export async function getInformationHealth(
 
     const total = interactions.length  // 記事数（カテゴリトークン数ではなく）
     const catTotal = allCats.length    // カテゴリ分布計算用
-    const nCategories = Object.keys(distribution).length
     let diversityScore = 0
 
-    if (nCategories > 1) {
+    // 分母は主要ジャンル全体で固定（health-local.ts と同じ定義）。
+    // 観測ジャンル数で割ると、狭い範囲を満遍なく読んだだけで満点になる。
+    if (catTotal > 0) {
         let entropy = 0
         Object.values(distribution).forEach((count) => {
             const p = count / catTotal
             entropy -= p * Math.log2(p)
         })
-        const maxEntropy = Math.log2(nCategories)
-        diversityScore = Math.round((entropy / maxEntropy) * 100)
+        const maxEntropy = Math.log2(ONBOARDING_CATEGORIES.length)
+        diversityScore = Math.min(100, Math.round((entropy / maxEntropy) * 100))
     }
 
     // Find dominant

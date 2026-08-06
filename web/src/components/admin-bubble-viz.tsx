@@ -9,6 +9,7 @@
 
 import { useMemo } from 'react'
 import { UserCategoryCell, UserDetail, anonUser } from '@/lib/client/admin'
+import { ONBOARDING_CATEGORIES } from '@/lib/types'
 
 // SVG用のジャンル配色（テーブルのtailwindクラス配色と同系のhex）
 const CAT_HEX: Record<string, string> = {
@@ -91,7 +92,9 @@ export function deriveBubbleProfiles(
             const p = c.views / total
             if (p > 0) h -= p * Math.log(p)
         }
-        const k = Math.max(genres.length, cells.length, 2)
+        // 正規化の分母は主要ジャンル全体で固定する（ユーザー側ダッシュボードと同じ定義）。
+        // 観測ジャンル数で割ると、狭い範囲を満遍なく読んだだけで満点になる。
+        const k = ONBOARDING_CATEGORIES.length
         profiles.push({
             user_id, total, shares,
             entropy: Math.min(h / Math.log(k), 1),

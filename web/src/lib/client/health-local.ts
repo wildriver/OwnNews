@@ -76,15 +76,27 @@ export function computeHealthStats(all: LocalInteraction[], period: Period = '30
         .map(([keyword, count]) => ({ keyword, count }))
 
     const catTotal = allCats.length
-    const nCategories = Object.keys(distribution).length
+    // 多様性スコア = ジャンル分布のエントロピーを「主要ジャンル全体」で正規化した値。
+    //
+    // 分母は必ず ONBOARDING_CATEGORIES（12ジャンル）で固定する。
+    // かつては「実際に読んだジャンル数」で割っていたため、ITとスポーツの2つしか
+    // 読んでいなくても半々なら100点が出ていた（2026-08-06発見）。読んでいない
+    // ジャンルが分母から外れる＝無視しても減点されない、という情報的健康の指標
+    // としては逆立ちした挙動だった。「足りない栄養素」の判定も同じ12ジャンルを
+    // 使っており、そちらとも整合する。
+    //
+    // この定義では、12ジャンル中k個しか読んでいない人の上限は log2(k)/log2(12)
+    // に抑えられる（例: 7ジャンルなら最高78点）。満点には全ジャンルを均等に
+    // 読む必要があり、指標の意味と一致する。
     let diversityScore = 0
-    if (nCategories > 1) {
+    if (catTotal > 0) {
         let entropy = 0
         Object.values(distribution).forEach(count => {
             const p = count / catTotal
             entropy -= p * Math.log2(p)
         })
-        diversityScore = Math.round((entropy / Math.log2(nCategories)) * 100)
+        const maxEntropy = Math.log2(ONBOARDING_CATEGORIES.length)
+        diversityScore = Math.min(100, Math.round((entropy / maxEntropy) * 100))
     }
 
     let dominantCategory = ''
