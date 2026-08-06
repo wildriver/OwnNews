@@ -121,16 +121,32 @@ async function doPull(): Promise<RemoteState | null> {
             // 未pushのローカル操作は保持（サーバーにまだ無いだけ）
             const localUnsyncedKeys = new Set(local.filter(l => !l.synced).map(l => `${l.article_id}|${l.type}`))
 
-            // 1) サーバーから消えた同期済みローカル行を削除（サーバー側削除を反映）。
-            //    ただしpullは最新2000件までなので、それ以前の「窓の外」は誤削除しない。
+            // 1) サーバーに存在しない同期済みローカル行の扱い。
+            //    少数なら「他端末での削除」とみなしてローカルにも反映する。
+            //    大量なら「サーバー側のデータ欠損」とみなし、削除せず未push状態に戻して
+            //    後段の pushUnsyncedInteractions でサーバーへ復元する。
+            //    ※2026-08-06: SQL Editorからの手動DELETEで user_interactions が
+            //      754行失われる事故が発生。当時のコードは無条件にローカルを
+            //      サーバーへ合わせていたため、ユーザーがアプリを開くたびに
+            //      端末に残る最後のコピーまで消える状態だった。研究データは
+            //      再取得不能なので、削除より保全を優先する。
+            //    ただしpullは最新2000件までなので、それ以前の「窓の外」は対象外。
+            const MAX_SAFE_ORPHAN_DELETES = 5
             const windowed = remoteInts.length >= 2000
             const oldestRemote = remoteInts.length ? remoteInts[remoteInts.length - 1].created_at : ''
-            const toDelete = local
-                .filter(l => l.synced
-                    && !remoteKeys.has(`${l.article_id}|${l.type}`)
-                    && !(windowed && l.created_at < oldestRemote))
-                .map(l => [l.article_id, l.type] as [string, string])
-            await deleteInteractions(toDelete)
+            const orphans = local.filter(l => l.synced
+                && !remoteKeys.has(`${l.article_id}|${l.type}`)
+                && !(windowed && l.created_at < oldestRemote))
+
+            if (orphans.length > MAX_SAFE_ORPHAN_DELETES) {
+                console.warn(
+                    `[sync] サーバーに無い同期済み履歴が${orphans.length}件あります。`
+                    + 'サーバー側の欠損とみなし、削除せず復元します。'
+                )
+                for (const o of orphans) await putInteraction({ ...o, synced: false })
+            } else {
+                await deleteInteractions(orphans.map(l => [l.article_id, l.type] as [string, string]))
+            }
 
             // 2) リモート行を取り込み（同期済みローカルは上書き＝タイトル補完等を反映。
             //    未pushのローカルは温存）。栄養素スコア・キーワードはサーバに無ければ、
