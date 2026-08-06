@@ -712,6 +712,27 @@ async function archiveAndPruneOldest(supabase: SupabaseClient, bucket: R2Bucket)
 // R2はオブジェクトへの追記ができないため、実行ごとに小さなチャンクを書く。
 // 分析時は interactions/raw/ 配下を全て読んで主キーで重複排除する。
 
+/** articles を参照する ON DELETE CASCADE 制約を検出して警告する。
+ *  2026-08-06、schema.sql に無い CASCADE が実DBに存在し、retentionの記事削除に
+ *  連鎖して閲覧履歴が失われた。同じ地雷が再び埋まっても気づけるよう常時監視する。
+ *  articles は日常的に大量削除されるため、ここに CASCADE があってはならない。 */
+async function checkCascadeGuard(supabase: SupabaseClient): Promise<void> {
+    const { data, error } = await supabase.rpc('admin_cascade_guard')
+    if (error) {
+        console.warn('Cascade guard: check failed (migration applied?):', error.message)
+        return
+    }
+    const rows = (data || []) as { child_table: string; constraint_name: string; definition: string }[]
+    if (rows.length === 0) return
+    for (const r of rows) {
+        console.error(
+            `[CASCADE GUARD] 危険: ${r.child_table}.${r.constraint_name} が articles を`
+            + ` ON DELETE CASCADE で参照しています。retentionの記事削除で ${r.child_table}`
+            + ` のデータが道連れになります。制約を除去してください: ${r.definition}`
+        )
+    }
+}
+
 const INTERACTION_ARCHIVE_STATE = 'interactions/state.json'
 const INTERACTION_ARCHIVE_PAGE = 1000
 /** 1実行あたりの最大ページ数。Cloudflare無料枠の50サブリクエスト上限を守る */
@@ -1125,5 +1146,8 @@ export default {
         if (env.PACK_BUCKET) {
             ctx.waitUntil(archiveInteractionsToR2(supabase, env.PACK_BUCKET))
         }
+
+        // 9. 危険なCASCADE制約の監視（記事の大量削除で他テーブルが道連れにならないか）
+        ctx.waitUntil(checkCascadeGuard(supabase))
     }
 }

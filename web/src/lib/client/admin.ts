@@ -73,6 +73,14 @@ export interface CorpusCategory {
     cnt: number
 }
 
+/** articles を ON DELETE CASCADE で参照している危険な制約（あってはならない）。
+ *  2026-08-06、この種の制約により記事retentionで閲覧履歴が失われた。 */
+export interface CascadeRisk {
+    child_table: string
+    constraint_name: string
+    definition: string
+}
+
 export interface AdminData {
     summary: AdminSummary
     daily: DailyActivity[]
@@ -85,6 +93,8 @@ export interface AdminData {
     watchedTags: WatchedTagAgg[] | null
     /** 記事母集団の真の分布（articlesテーブル・直近30日）。RPC未適用なら null。 */
     corpus: CorpusCategory[] | null
+    /** 危険なCASCADE制約。空配列なら安全。RPC未適用なら null。 */
+    cascadeRisks: CascadeRisk[] | null
 }
 
 /**
@@ -115,7 +125,7 @@ export async function checkIsAdmin(): Promise<boolean> {
  */
 export async function fetchAdminData(days = 30): Promise<AdminData | null> {
     const supabase = createClient()
-    const [summary, daily, categories, filterHistogram, users, matrix, watchedTags, corpus] = await Promise.all([
+    const [summary, daily, categories, filterHistogram, users, matrix, watchedTags, corpus, cascade] = await Promise.all([
         supabase.rpc('admin_summary'),
         supabase.rpc('admin_daily_activity', { days }),
         supabase.rpc('admin_category_distribution'),
@@ -124,6 +134,7 @@ export async function fetchAdminData(days = 30): Promise<AdminData | null> {
         supabase.rpc('admin_user_category_matrix'),
         supabase.rpc('admin_watched_tags'),
         supabase.rpc('admin_corpus_distribution'),
+        supabase.rpc('admin_cascade_guard'),
     ])
 
     // どれか一つでも認可エラーなら管理者ではない（or 未適用）
@@ -141,5 +152,6 @@ export async function fetchAdminData(days = 30): Promise<AdminData | null> {
         matrix: matrix.error ? null : ((matrix.data ?? []) as UserCategoryCell[]),
         watchedTags: watchedTags.error ? null : ((watchedTags.data ?? []) as WatchedTagAgg[]),
         corpus: corpus.error ? null : ((corpus.data ?? []) as CorpusCategory[]),
+        cascadeRisks: cascade.error ? null : ((cascade.data ?? []) as CascadeRisk[]),
     }
 }

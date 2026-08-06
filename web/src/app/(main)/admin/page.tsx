@@ -227,6 +227,29 @@ function AdminDashboard({ data }: { data: AdminData }) {
                     </p>
                 </header>
 
+                {/* データ保全の警告: articles を CASCADE 参照する制約があると、
+                    記事のretention（日次削除）で他テーブルのデータが道連れになる。
+                    2026-08-06に閲覧履歴を失った事故の再発検知（admin_cascade_guard）。 */}
+                {data.cascadeRisks && data.cascadeRisks.length > 0 && (
+                    <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 space-y-2">
+                        <div className="flex items-center gap-2 text-rose-700 font-bold text-[14px]">
+                            <ShieldAlert className="w-4 h-4" />
+                            データ消失の危険: articles への CASCADE 制約が {data.cascadeRisks.length} 件あります
+                        </div>
+                        <p className="text-[12px] text-rose-900/80 leading-relaxed">
+                            記事は保持期間を過ぎると日次で削除されます。下記の制約があると、
+                            そのたびに関連データも道連れで消えます。制約を除去してください。
+                        </p>
+                        <ul className="space-y-1">
+                            {data.cascadeRisks.map(r => (
+                                <li key={r.constraint_name} className="text-[11px] font-mono text-rose-900 bg-rose-100 rounded px-2 py-1">
+                                    {r.child_table}: {r.definition}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+
                 {/* KPI */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                     <Kpi icon={Users} label="登録ユーザー" value={s.total_users}
