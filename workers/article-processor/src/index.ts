@@ -702,6 +702,79 @@ async function archiveAndPruneOldest(supabase: SupabaseClient, bucket: R2Bucket)
     else console.log(`Retention: deleted ${day} (${dayCount} articles)`)
 }
 
+// ---- 閲覧履歴のR2アーカイブ（研究データの正本） ----
+// 2026-08-06、実DBに残っていた ON DELETE CASCADE 制約により、記事のretentionに
+// 連鎖して閲覧履歴が失われた。履歴は再取得不能な研究データなのに、保管場所が
+// Supabase 1箇所しか無かったことが被害を決定的にした。
+// R2を「絶対に削除しない正本」として append-only で積み、Supabaseは
+// 同期と管理画面のための作業セット（再構築可能）に位置づける。
+//
+// R2はオブジェクトへの追記ができないため、実行ごとに小さなチャンクを書く。
+// 分析時は interactions/raw/ 配下を全て読んで主キーで重複排除する。
+
+const INTERACTION_ARCHIVE_STATE = 'interactions/state.json'
+const INTERACTION_ARCHIVE_PAGE = 1000
+/** 1実行あたりの最大ページ数。Cloudflare無料枠の50サブリクエスト上限を守る */
+const INTERACTION_ARCHIVE_MAX_PAGES = 2
+
+async function archiveInteractionsToR2(supabase: SupabaseClient, bucket: R2Bucket): Promise<void> {
+    // 1. 前回どこまで積んだか。読めない場合は積まない（取りこぼしと重複の暴走を防ぐ）
+    let cursor = '1970-01-01T00:00:00+00:00'
+    try {
+        const st = await bucket.get(INTERACTION_ARCHIVE_STATE)
+        if (st) {
+            const parsed = JSON.parse(await st.text()) as { last_created_at?: string }
+            if (parsed.last_created_at) cursor = parsed.last_created_at
+        }
+    } catch (e) {
+        console.error('Interaction archive: state read failed, skipping:', e)
+        return
+    }
+
+    // 2. 前回以降を古い順に取得。
+    //    created_at は同値が起こりうるが gt() を使う（同一ミリ秒での分断は現実的に
+    //    起きず、仮に取りこぼしてもSupabase側には行が残るため復旧可能）。
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: any[] = []
+    for (let p = 0; p < INTERACTION_ARCHIVE_MAX_PAGES; p++) {
+        const { data, error } = await supabase
+            .from('user_interactions')
+            .select('*')
+            .gt('created_at', cursor)
+            .order('created_at', { ascending: true })
+            .limit(INTERACTION_ARCHIVE_PAGE)
+        if (error) {
+            console.error('Interaction archive: query error:', error)
+            break
+        }
+        if (!data || data.length === 0) break
+        rows.push(...data)
+        cursor = data[data.length - 1].created_at
+        if (data.length < INTERACTION_ARCHIVE_PAGE) break
+    }
+    if (rows.length === 0) return
+
+    // 3. NDJSONで書き出す。キーは「履歴の日付/実行時刻」
+    const day = String(rows[rows.length - 1].created_at).slice(0, 10)
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const key = `interactions/raw/${day}/${stamp}.ndjson`
+    const body = rows.map(r => JSON.stringify(r)).join('\n') + '\n'
+    try {
+        await bucket.put(key, body)
+    } catch (e) {
+        // 書けなければ状態を進めない＝次回同じ範囲をやり直す（取りこぼさない）
+        console.error('Interaction archive: R2 put failed, will retry next run:', e)
+        return
+    }
+
+    // 4. 書き込み成功後にだけ状態を進める
+    await bucket.put(INTERACTION_ARCHIVE_STATE, JSON.stringify({
+        last_created_at: cursor,
+        updated_at: new Date().toISOString(),
+    }))
+    console.log(`Interaction archive: ${rows.length} rows -> ${key}`)
+}
+
 /** @param freshEmb 今回の実行で計算した量子化済み埋め込み（id → base64）。
  *  DBから取り直さずに使うことで、Cloudflare無料枠の50サブリクエスト上限を守る。 */
 async function generateAndUploadPack(
@@ -1044,6 +1117,13 @@ export default {
         //    1日24回動けば、退避すべき日（1日1つ）の消化には十分。
         if (env.PACK_BUCKET && new Date().getUTCMinutes() < 30) {
             ctx.waitUntil(archiveAndPruneOldest(supabase, env.PACK_BUCKET))
+        }
+
+        // 8. 閲覧履歴をR2へ増分アーカイブ（毎実行＝最大30分の欠損窓）。
+        //    研究データの正本をSupabaseの外に置き、単一障害点を解消する
+        //    （2026-08-06のCASCADE連鎖削除で履歴を失った事故の再発防止）。
+        if (env.PACK_BUCKET) {
+            ctx.waitUntil(archiveInteractionsToR2(supabase, env.PACK_BUCKET))
         }
     }
 }
