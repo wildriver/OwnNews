@@ -8,10 +8,30 @@ import { APP_STORE_URL } from '@/lib/types'
 
 export const runtime = 'edge'
 
+const TITLE = 'OwnNews — 情報的健康を保つニュースリーダー'
+const DESC =
+    'ニュースを食事のように。推薦エンジンはあなたの端末で動き、嗜好データはあなたに帰属。推薦の強度を自分で調整でき、情報摂取の栄養バランスを可視化するニュースリーダー。記事収集にはCEEK.JP NEWSにご協力いただいています。'
+
 export const metadata = {
-    title: 'OwnNews — 情報的健康を保つニュースリーダー',
-    description:
-        'ニュースを食事のように。推薦エンジンはあなたの端末で動き、嗜好データはあなたに帰属。推薦の強度を自分で調整でき、情報摂取の栄養バランスを可視化するニュースリーダー。記事収集にはCEEK.JP NEWSにご協力いただいています。',
+    title: TITLE,
+    description: DESC,
+    // ルートのopenGraphはtitle/descriptionを自動では引き継がないため、
+    // 共有されることが最も多いこのページでは明示的に上書きする
+    openGraph: {
+        type: 'website',
+        locale: 'ja_JP',
+        url: 'https://ownnews-web.pages.dev/welcome',
+        siteName: 'OwnNews',
+        title: TITLE,
+        description: DESC,
+        images: [{ url: '/ogp.png', width: 1200, height: 630, alt: TITLE }],
+    },
+    twitter: {
+        card: 'summary_large_image',
+        title: TITLE,
+        description: DESC,
+        images: ['/ogp.png'],
+    },
 }
 
 // 未ログイン時のトップページ（ランディング）。ログイン済みならフィードへ。

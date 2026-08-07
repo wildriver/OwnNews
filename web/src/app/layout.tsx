@@ -8,11 +8,36 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+const SITE_URL = "https://ownnews-web.pages.dev";
+const SITE_NAME = "OwnNews";
+const SITE_TITLE = "OwnNews | 情報的健康を保つニュースフィード";
+const SITE_DESC =
+  "ニュースを食事になぞらえ、情報摂取のバランスを可視化するローカルファースト・ニュースリーダー。";
+
 export const metadata: Metadata = {
-  title: "OwnNews | 情報的健康を保つニュースフィード",
-  description: "ニュースを食事になぞらえ、情報摂取のバランスを可視化するローカルファースト・ニュースリーダー。",
+  // 相対パス（/ogp.png 等）を絶対URLに解決するために必要。
+  // これが無いとSNS側が画像を取得できずカードが出ない。
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESC,
   manifest: "/manifest.json",
   appleWebApp: { capable: true, title: "OwnNews", statusBarStyle: "default" },
+  // SNS共有時のカード（画像は scripts/gen_ogp.py で生成）
+  openGraph: {
+    type: "website",
+    locale: "ja_JP",
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    title: SITE_TITLE,
+    description: SITE_DESC,
+    images: [{ url: "/ogp.png", width: 1200, height: 630, alt: SITE_TITLE }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESC,
+    images: ["/ogp.png"],
+  },
 };
 
 export const viewport: Viewport = {
