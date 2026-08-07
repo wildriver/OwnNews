@@ -52,3 +52,7 @@ export const ONBOARDING_CATEGORIES = [
     'IT', 'スポーツ', 'エンターテイメント', 'サイエンス',
     '地方・地域', '中国・韓国', '訃報・人事', 'その他',
 ]
+
+/** App Store の OwnNews ページ。配信地域が日本のみのため /jp/ を明示する
+ *  （地域なしのURLは閲覧地域のストアに解決され、日本国外だと not found になる）。 */
+export const APP_STORE_URL = 'https://apps.apple.com/jp/app/ownnews/id6797190794'

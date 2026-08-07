@@ -3,6 +3,8 @@ import Image from 'next/image'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Scale, SlidersHorizontal, UserCheck, Salad, ExternalLink, ArrowRight } from 'lucide-react'
+import { AppleLogo } from '@/components/apple-logo'
+import { APP_STORE_URL } from '@/lib/types'
 
 export const runtime = 'edge'
 
@@ -47,14 +49,25 @@ export default async function WelcomePage() {
                         あなたが何をどれだけ読んでいるかを栄養バランスとして可視化し、
                         推薦アルゴリズムの主導権をプラットフォームからあなたの手に取り戻します。
                     </p>
-                    <div className="mt-7 flex items-center justify-center gap-3">
+                    <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
                         <Link
                             href="/login"
                             className="inline-flex items-center gap-2 text-[15px] font-semibold bg-primary text-primary-foreground rounded-xl px-6 py-3 hover:opacity-90 transition-opacity shadow-sm"
                         >
-                            無料で始める <ArrowRight className="w-4 h-4" />
+                            ブラウザで始める <ArrowRight className="w-4 h-4" />
                         </Link>
+                        <a
+                            href={APP_STORE_URL}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-[15px] font-semibold bg-foreground text-background rounded-xl px-6 py-3 hover:opacity-90 transition-opacity shadow-sm"
+                        >
+                            <AppleLogo className="w-4 h-4" />iPhoneアプリを入手
+                        </a>
                     </div>
+                    <p className="mt-3 text-[12px] text-muted-foreground">
+                        アプリなら毎日決まった時刻にニュースの通知が届きます。ブラウザ版と同じアカウントで同期されます。
+                    </p>
 
                     {/* フィードのスクリーンショット */}
                     <div className="mt-12">
@@ -190,14 +203,24 @@ export default async function WelcomePage() {
                         今日から、情報の食生活を整える。
                     </h2>
                     <p className="mt-3 text-[15px] text-muted-foreground">
-                        Googleアカウントでログインするだけ。閲覧するほど、あなたのバブルの形が見えてきます。
+                        Google または Apple アカウントでログインするだけ。閲覧するほど、あなたのバブルの形が見えてきます。
                     </p>
-                    <Link
-                        href="/login"
-                        className="mt-6 inline-flex items-center gap-2 text-[15px] font-semibold bg-primary text-primary-foreground rounded-xl px-6 py-3 hover:opacity-90 transition-opacity shadow-sm"
-                    >
-                        無料で始める <ArrowRight className="w-4 h-4" />
-                    </Link>
+                    <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                        <Link
+                            href="/login"
+                            className="inline-flex items-center gap-2 text-[15px] font-semibold bg-primary text-primary-foreground rounded-xl px-6 py-3 hover:opacity-90 transition-opacity shadow-sm"
+                        >
+                            ブラウザで始める <ArrowRight className="w-4 h-4" />
+                        </Link>
+                        <a
+                            href={APP_STORE_URL}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-[15px] font-semibold bg-foreground text-background rounded-xl px-6 py-3 hover:opacity-90 transition-opacity shadow-sm"
+                        >
+                            <AppleLogo className="w-4 h-4" />iPhoneアプリを入手
+                        </a>
+                    </div>
                 </section>
             </main>
 

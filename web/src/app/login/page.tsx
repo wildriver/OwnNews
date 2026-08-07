@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
+import { AppleLogo } from '@/components/apple-logo'
+import { APP_STORE_URL } from '@/lib/types'
 
 // iOSラッパーアプリとのSign in with Appleブリッジ。
 // アプリ側(WKWebView)が appleSignIn メッセージハンドラを提供し、
@@ -121,9 +123,7 @@ export default function LoginPage() {
                         onClick={handleAppleLogin}
                         disabled={busy}
                     >
-                        <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                            <path d="M17.05 20.28c-.98.95-2.05.86-3.08.38-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.38C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.53 4.08zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-                        </svg>
+                        <AppleLogo className="w-5 h-5 mr-3" />
                         Appleでサインイン
                     </Button>
 
@@ -152,6 +152,19 @@ export default function LoginPage() {
                         </svg>
                         Googleでログイン
                     </Button>
+
+                    {/* アプリ内では不要（既にアプリを使っている）ので出さない */}
+                    {!isNativeApp && (
+                        <a
+                            href={APP_STORE_URL}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors border-t border-border pt-4"
+                        >
+                            <AppleLogo className="w-3 h-3" />
+                            iPhoneをお使いの方はアプリ版もあります
+                        </a>
+                    )}
 
                     <p className="text-center">
                         <a href="/welcome" className="text-[12px] text-muted-foreground hover:text-primary transition-colors">
