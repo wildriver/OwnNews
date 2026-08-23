@@ -265,9 +265,9 @@ export function computeHourlyDistribution(all: LocalInteraction[]): { label: str
     return hours
 }
 
-/** 配信中の記事パック相当の表示件数。端末キャッシュは pruneArticles で最大1500件まで
+/** 配信中の記事パック相当の表示件数。端末キャッシュは pruneArticles で直近7日分が
  *  溜まる（＝配信が終わった古い記事も含む）ため、そのまま数えると「母集団」が
- *  常にキャッシュ上限に張り付いて実態とズレる。いま配信中のパック（Worker側 PACK_SIZE=800）に
+ *  実態とズレる。いま配信中のパック（Worker側 PACK_SIZE=800）に
  *  合わせ、新しい順の先頭800件だけを母集団とみなす。 */
 const CORPUS_WINDOW = 800
 

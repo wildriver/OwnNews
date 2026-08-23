@@ -288,7 +288,7 @@ function AdminDashboard({ data }: { data: AdminData }) {
                     title="記事母集団のジャンル分布（実データ・直近30日）"
                     desc={data.corpus === null
                         ? undefined
-                        : `収集した記事テーブルそのものの分布 — 合計 ${corpusTotal.toLocaleString()} 件。ユーザー画面の「配信中の記事の母集団」は端末キャッシュ（最大1500件）ベースなので、こちらが収集の実態。`}
+                        : `収集した記事テーブルそのものの分布 — 合計 ${corpusTotal.toLocaleString()} 件。ユーザー画面の「配信中の記事の母集団」は端末キャッシュ（直近7日分）ベースなので、こちらが収集の実態。`}
                 >
                     {data.corpus === null ? (
                         <p className="text-[12px] text-muted-foreground">

@@ -60,12 +60,35 @@ export async function getAllArticles(): Promise<PackArticle[]> {
     return tx('articles', 'readonly', s => s.getAll() as IDBRequest<PackArticle[]>)
 }
 
-/** 古い記事を削除してキャッシュ肥大を防ぐ（最新maxCount件だけ残す） */
-export async function pruneArticles(maxCount: number = 1500): Promise<void> {
+/** 端末が保持する記事の窓。サーバの記事DBのretentionと同じ7日にそろえる。
+ *
+ *  以前は「最新1500件」という件数で切っていた。その値には導出が無く、容量にも
+ *  計算量にも縛られていない（7日分=約5600件でもIndexedDB 12.5MB・コサイン570万積和）。
+ *  一方、設計上の概念（サーバの7日retention、パックの72時間プール）はすべて時間で
+ *  切られており、件数で切ると端末が保持する期間が記事の流量に応じて動いてしまう。
+ *  現在の流量では1500件は約2日分でしかなく、サーバが保持する窓より短かった。 */
+const ARTICLE_WINDOW_DAYS = 7
+/** 流量が異常に増えたときの保険。通常は日数側で先に切られる。 */
+const ARTICLE_HARD_CAP = 20000
+
+/** 保持窓の外に出た記事を削除してキャッシュ肥大を防ぐ。 */
+export async function pruneArticles(
+    windowDays: number = ARTICLE_WINDOW_DAYS,
+    hardCap: number = ARTICLE_HARD_CAP,
+): Promise<void> {
     const all = await getAllArticles()
-    if (all.length <= maxCount) return
-    const sorted = all.sort((a, b) => (b.collected_at || '').localeCompare(a.collected_at || ''))
-    const toDelete = sorted.slice(maxCount)
+    const cutoff = new Date(Date.now() - windowDays * 86400_000).toISOString()
+    // collected_at が無い記事は日数で判定できないため、ここでは消さない（hardCap側に委ねる）
+    const toDelete = all.filter(a => a.collected_at && a.collected_at < cutoff)
+
+    const remaining = all.length - toDelete.length
+    if (remaining > hardCap) {
+        const kept = all
+            .filter(a => !(a.collected_at && a.collected_at < cutoff))
+            .sort((x, y) => (y.collected_at || '').localeCompare(x.collected_at || ''))
+        toDelete.push(...kept.slice(hardCap))
+    }
+    if (toDelete.length === 0) return
     const db = await openDB()
     return new Promise((resolve, reject) => {
         const t = db.transaction('articles', 'readwrite')
