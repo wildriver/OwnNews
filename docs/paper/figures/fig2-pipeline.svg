@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 330" width="960" height="330" font-family="Hiragino Sans, Yu Gothic, Noto Sans JP, sans-serif">
+  <defs>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#000"/>
+    </marker>
+  </defs>
+
+  <!-- 帯: 個人化の有無 -->
+  <rect x="24" y="52" width="612" height="150" fill="#000" opacity="0.04"/>
+  <rect x="648" y="52" width="288" height="150" fill="#000" opacity="0.10"/>
+  <text x="330" y="72" font-size="12" text-anchor="middle" font-weight="bold">個人化なし（全利用者に同一）</text>
+  <text x="792" y="72" font-size="12" text-anchor="middle" font-weight="bold">個人化あり</text>
+
+  <!-- 層ラベル -->
+  <g font-size="11.5" text-anchor="middle" opacity="0.85">
+    <text x="120" y="222">集約層</text>
+    <text x="400" y="222">共通の前処理</text>
+    <text x="792" y="222">利用者側推薦</text>
+  </g>
+  <g stroke="#000" stroke-width="1" opacity="0.35">
+    <line x1="24" y1="208" x2="216" y2="208"/>
+    <line x1="240" y1="208" x2="636" y2="208"/>
+    <line x1="648" y1="208" x2="936" y2="208"/>
+  </g>
+
+  <!-- ノード -->
+  <g font-size="12">
+    <rect x="36" y="92" width="168" height="72" fill="#fff" stroke="#000" stroke-width="1.6"/>
+    <text x="120" y="118" text-anchor="middle" font-weight="bold">CEEK.JP NEWS</text>
+    <text x="120" y="136" text-anchor="middle" font-size="11">13カテゴリフィード</text>
+    <text x="120" y="152" text-anchor="middle" font-size="11">時系列・順位付けなし</text>
+
+    <rect x="240" y="92" width="150" height="72" fill="#fff" stroke="#000"/>
+    <text x="315" y="114" text-anchor="middle">記事DB</text>
+    <text x="315" y="132" text-anchor="middle" font-size="11">Supabase</text>
+    <text x="315" y="149" text-anchor="middle" font-size="11">retention 7日</text>
+
+    <rect x="414" y="92" width="150" height="72" fill="#fff" stroke="#000"/>
+    <text x="489" y="114" text-anchor="middle">前処理</text>
+    <text x="489" y="132" text-anchor="middle" font-size="11">埋め込み1024次元</text>
+    <text x="489" y="149" text-anchor="middle" font-size="11">栄養素・分類</text>
+
+    <rect x="588" y="92" width="48" height="72" fill="#fff" stroke="#000"/>
+    <text x="612" y="120" text-anchor="middle" font-size="11">層化</text>
+    <text x="612" y="137" text-anchor="middle" font-size="11">抽出</text>
+    <text x="612" y="154" text-anchor="middle" font-size="10">800件</text>
+
+    <rect x="672" y="92" width="114" height="72" fill="#fff" stroke="#000"/>
+    <text x="729" y="114" text-anchor="middle">端末キャッシュ</text>
+    <text x="729" y="132" text-anchor="middle" font-size="11">IndexedDB</text>
+    <text x="729" y="149" text-anchor="middle" font-size="11">7日窓</text>
+
+    <rect x="810" y="92" width="114" height="72" fill="#fff" stroke="#000" stroke-width="1.6"/>
+    <text x="867" y="114" text-anchor="middle" font-weight="bold">推薦エンジン</text>
+    <text x="867" y="132" text-anchor="middle" font-size="11">コサイン類似度</text>
+    <text x="867" y="149" text-anchor="middle" font-size="11">強度スライダー</text>
+  </g>
+
+  <!-- 矢印 -->
+  <g stroke="#000" stroke-width="1.4" marker-end="url(#b)" fill="none">
+    <line x1="204" y1="128" x2="236" y2="128"/>
+    <line x1="390" y1="128" x2="410" y2="128"/>
+    <line x1="564" y1="128" x2="584" y2="128"/>
+    <line x1="636" y1="128" x2="668" y2="128"/>
+    <line x1="786" y1="128" x2="806" y2="128"/>
+  </g>
+  <text x="652" y="88" font-size="10.5" text-anchor="middle">R2/CDN</text>
+
+  <!-- 頻度 -->
+  <g font-size="10.5" text-anchor="middle" opacity="0.8">
+    <text x="120" y="180">毎時 収集</text>
+    <text x="489" y="180">30分毎</text>
+    <text x="729" y="180">全量3時間毎＋差分</text>
+  </g>
+
+  <!-- 注記 -->
+  <g font-size="11.5">
+    <text x="24" y="264" font-weight="bold">候補集合の性質</text>
+    <text x="24" y="284">抽出はカテゴリ分布に比例し、個々の利用者の選好とは独立である。順位付けが行われるのは端末内だけであり、</text>
+    <text x="24" y="302">閲覧履歴と関心ベクトルはサーバへ送られない。端末の保持窓はサーバの retention と同じ7日にそろえてある。</text>
+  </g>
+</svg>
