@@ -80,18 +80,30 @@ FEEDS: list[dict] = [
     {"url": "https://news.ceek.jp/search.cgi?category_id=local&feed=1", "source": "CEEK.JP", "category": None},
     {"url": "https://news.ceek.jp/search.cgi?category_id=etc&feed=1", "source": "CEEK.JP", "category": None},
 
-    # --- 国内主要メディアの公式RSS ---
-    {"url": "https://www3.nhk.or.jp/rss/news/cat0.xml", "source": "NHK", "category": "その他"},
-    {"url": "https://www3.nhk.or.jp/rss/news/cat1.xml", "source": "NHK", "category": "社会"},
-    {"url": "https://www3.nhk.or.jp/rss/news/cat4.xml", "source": "NHK", "category": "政治"},
-    {"url": "https://www3.nhk.or.jp/rss/news/cat5.xml", "source": "NHK", "category": "経済"},
-    {"url": "https://www3.nhk.or.jp/rss/news/cat6.xml", "source": "NHK", "category": "国際"},
-    {"url": "https://www3.nhk.or.jp/rss/news/cat7.xml", "source": "NHK", "category": "スポーツ"},
-    {"url": "https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml", "source": "ITmedia", "category": "IT"},
-    {"url": "https://www.watch.impress.co.jp/data/rss/1.0/ipw/feed.rdf", "source": "Impress Watch", "category": "IT"},
-    {"url": "https://gigazine.net/news/rss_2.0/", "source": "GIGAZINE", "category": "IT"},
-    {"url": "https://toyokeizai.net/list/feed/rss", "source": "東洋経済", "category": "経済"},
-    {"url": "https://feeds.japan.cnet.com/rss/cnet/all.rdf", "source": "CNET Japan", "category": "IT"},
+    # --- 国内主要メディアの公式RSS（2026-08-23 停止） ---
+    # 集約層を CEEK.JP に一本化した。研究上、コーパスの由来を単一の集約層に
+    # そろえるためである（「時系列で網羅的に集約する情報源の上のリーダー」という
+    # 位置づけを、実装と一致させる）。
+    #
+    # 停止して失うものは小さい。2026-08-23 のパック800件を調べたところ、
+    # 実配信元ドメインは149種で、うち148種はCEEK経由だった。ITmedia・Impress の
+    # 記事も CEEK 経由で入っており（UNIQUE(link) の重複排除で先着のCEEKが勝つ）、
+    # NHK・東洋経済・CNET はパックに1件も入っていなかった。固有の寄与があったのは
+    # GIGAZINE の4件（0.5%）のみ。
+    #
+    # 観察研究の期間に入る前に構成を確定させる。途中で変えると交絡になる。
+    # 復活させる場合は下のコメントを外すこと。
+    # {"url": "https://www3.nhk.or.jp/rss/news/cat0.xml", "source": "NHK", "category": "その他"},
+    # {"url": "https://www3.nhk.or.jp/rss/news/cat1.xml", "source": "NHK", "category": "社会"},
+    # {"url": "https://www3.nhk.or.jp/rss/news/cat4.xml", "source": "NHK", "category": "政治"},
+    # {"url": "https://www3.nhk.or.jp/rss/news/cat5.xml", "source": "NHK", "category": "経済"},
+    # {"url": "https://www3.nhk.or.jp/rss/news/cat6.xml", "source": "NHK", "category": "国際"},
+    # {"url": "https://www3.nhk.or.jp/rss/news/cat7.xml", "source": "NHK", "category": "スポーツ"},
+    # {"url": "https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml", "source": "ITmedia", "category": "IT"},
+    # {"url": "https://www.watch.impress.co.jp/data/rss/1.0/ipw/feed.rdf", "source": "Impress Watch", "category": "IT"},
+    # {"url": "https://gigazine.net/news/rss_2.0/", "source": "GIGAZINE", "category": "IT"},
+    # {"url": "https://toyokeizai.net/list/feed/rss", "source": "東洋経済", "category": "経済"},
+    # {"url": "https://feeds.japan.cnet.com/rss/cnet/all.rdf", "source": "CNET Japan", "category": "IT"},
 ]
 
 

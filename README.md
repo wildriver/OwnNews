@@ -32,7 +32,7 @@ Web（PWA）に加えて **iOSアプリ**（WKWebViewラッパー＋ネイティ
 ```mermaid
 flowchart TD
     subgraph SERVER["サーバー側（共通データの準備だけ）"]
-        RSS["ニュースソース: CEEK.JP NEWS + NHK/ITmedia 等"]
+        RSS["ニュースソース: CEEK.JP NEWS（13カテゴリ）"]
         COL["collector.py（GitHub Actions・毎時）"]
         DB[("Supabase 記事DB（直近7日）")]
         WK["Cloudflare Worker（30分毎）: BGE-M3埋め込み + LLM解析 + パック生成"]
@@ -76,7 +76,7 @@ flowchart TD
 
 ### 1.2 Data Pipeline
 
-1. **収集 (Ingestion)** — `collector.py` が [CEEK.JP NEWS](https://news.ceek.jp/) の13カテゴリフィードと、NHK・ITmedia・Impress Watch・GIGAZINE・東洋経済オンライン・CNET Japan の公式RSSを**毎時**取得。CEEK はバースト的アクセスを弾くため、**ホスト別レート制御（CEEKへは10秒間隔＋ゆらぎ）・空振りリトライ・問い合わせ先入り User-Agent** で配慮しつつ、取りこぼしを防ぎます。保存順は**シャッフル**します（フィード順のまま保存すると `collected_at` が「実際の新しさ」ではなく「フィードの並び順」を表してしまい、先頭フィードのジャンルがパックから押し出されるため）。
+1. **収集 (Ingestion)** — `collector.py` が [CEEK.JP NEWS](https://news.ceek.jp/) の13カテゴリフィードを**毎時**取得。集約層をCEEKに一本化しています（2026-08-23）。個別の公式RSSも併用していましたが、パック800件の実配信元149ドメインのうち148がCEEK経由で、ITmedia・Impressの記事もCEEK経由で入っており（`UNIQUE(link)`で先着が勝つ）、固有の寄与はGIGAZINEの4件のみだったため停止しました。CEEK はバースト的アクセスを弾くため、**ホスト別レート制御（CEEKへは10秒間隔＋ゆらぎ）・空振りリトライ・問い合わせ先入り User-Agent** で配慮しつつ、取りこぼしを防ぎます。保存順は**シャッフル**します（フィード順のまま保存すると `collected_at` が「実際の新しさ」ではなく「フィードの並び順」を表してしまい、先頭フィードのジャンルがパックから押し出されるため）。
 2. **埋め込み (Vectorization)** — 多言語モデル **`@cf/baai/bge-m3`** で **1024次元ベクトル**に変換。
 3. **解析 (Analysis)** — LLMが各記事に「栄養素」5指標・中分類・キーワードを付与（下記 §2.2 / §3）。
 4. **パック生成 (Distribution)** — Worker が30分毎に **800件**の記事パック（メタデータ＋int8量子化埋め込み＋匿名の閲覧数/リアクション集計＋話題キーワード）を生成し **R2** の `pack/latest.json` に書き出し。`/api/pack` がCDNキャッシュ付きで配信します。
@@ -286,7 +286,7 @@ App Store 申請用の資料（メタデータ・審査ノート・スクリー�
 
 ## 8. News Sources & Copyright
 
-- 記事は **[CEEK.JP NEWS](https://news.ceek.jp/)** 様のRSSと、各報道機関の公式RSSから収集しています。ニュース検索サイトのご協力に感謝いたします。
+- 記事は **[CEEK.JP NEWS](https://news.ceek.jp/)** 様のRSSから収集しています。ニュース検索サイトのご協力に感謝いたします。
 - 本サービスは所在検索・情報解析サービス（**著作権法第47条の5**）の枠組みで、見出し・短い抜粋・小さなサムネイル・出典を表示し、**本文は必ず配信元で読んでいただく**設計です。栄養素等の指標はAIによる情報解析（**第30条の4**）の結果です。
 - 各記事の著作権は、それぞれの報道機関・配信元に帰属します。掲載停止・削除のご依頼は [`/about`](https://ownnews-web.pages.dev/about) の窓口へ。
 
