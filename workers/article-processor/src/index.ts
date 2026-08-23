@@ -796,6 +796,62 @@ async function archiveInteractionsToR2(supabase: SupabaseClient, bucket: R2Bucke
     console.log(`Interaction archive: ${rows.length} rows -> ${key}`)
 }
 
+// ---- UXイベントのR2アーカイブ ----
+// 閲覧履歴と同じ扱い（R2が正本・append-only）。Supabase側は保持期間を絞れる。
+// カーソルは server_at を使う。client_at は端末の時計に依存し、ずれた端末が
+// 「過去」の行を挿入すると二度と拾えなくなるため。
+const UX_ARCHIVE_STATE = 'ux_events/state.json'
+
+async function archiveUxEventsToR2(supabase: SupabaseClient, bucket: R2Bucket): Promise<void> {
+    let cursor = '1970-01-01T00:00:00+00:00'
+    try {
+        const st = await bucket.get(UX_ARCHIVE_STATE)
+        if (st) {
+            const parsed = JSON.parse(await st.text()) as { last_server_at?: string }
+            if (parsed.last_server_at) cursor = parsed.last_server_at
+        }
+    } catch (e) {
+        console.error('UX archive: state read failed, skipping:', e)
+        return
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: any[] = []
+    for (let p = 0; p < INTERACTION_ARCHIVE_MAX_PAGES; p++) {
+        const { data, error } = await supabase
+            .from('ux_events')
+            .select('*')
+            .gt('server_at', cursor)
+            .order('server_at', { ascending: true })
+            .limit(INTERACTION_ARCHIVE_PAGE)
+        if (error) {
+            console.error('UX archive: query error:', error)
+            break
+        }
+        if (!data || data.length === 0) break
+        rows.push(...data)
+        cursor = data[data.length - 1].server_at
+        if (data.length < INTERACTION_ARCHIVE_PAGE) break
+    }
+    if (rows.length === 0) return
+
+    const day = String(rows[rows.length - 1].server_at).slice(0, 10)
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const key = `ux_events/raw/${day}/${stamp}.ndjson`
+    try {
+        await bucket.put(key, rows.map(r => JSON.stringify(r)).join('\n') + '\n')
+    } catch (e) {
+        console.error('UX archive: R2 put failed, will retry next run:', e)
+        return
+    }
+
+    await bucket.put(UX_ARCHIVE_STATE, JSON.stringify({
+        last_server_at: cursor,
+        updated_at: new Date().toISOString(),
+    }))
+    console.log(`UX archive: ${rows.length} rows -> ${key}`)
+}
+
 /** @param freshEmb 今回の実行で計算した量子化済み埋め込み（id → base64）。
  *  DBから取り直さずに使うことで、Cloudflare無料枠の50サブリクエスト上限を守る。 */
 async function generateAndUploadPack(
@@ -1145,6 +1201,7 @@ export default {
         //    （2026-08-06のCASCADE連鎖削除で履歴を失った事故の再発防止）。
         if (env.PACK_BUCKET) {
             ctx.waitUntil(archiveInteractionsToR2(supabase, env.PACK_BUCKET))
+            ctx.waitUntil(archiveUxEventsToR2(supabase, env.PACK_BUCKET))
         }
 
         // 9. 危険なCASCADE制約の監視（記事の大量削除で他テーブルが道連れにならないか）

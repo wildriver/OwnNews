@@ -10,6 +10,8 @@ import { Telescope, Eye } from 'lucide-react'
 import { PackArticle, LocalInteraction } from '@/lib/client/types'
 import { REACTION_EMOJI } from '@/lib/client/reactions'
 import { extractSourceName } from '@/lib/news'
+import { noteOpenSurface } from '@/lib/client/events'
+import { ImpressionProbe } from '@/components/impression-probe'
 
 const MAX_ITEMS = 8
 
@@ -31,6 +33,7 @@ export function MissedNews({ articles, interactions }: {
     if (missed.length === 0) return null  // シグナルが無い間は出さない（誤解を招く空欄より非表示）
 
     return (
+        <ImpressionProbe surface="missed_news">
         <div className="bg-card border border-border rounded-xl p-6">
             <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Telescope className="w-5 h-5 text-amber-500" />見落としているかも
@@ -47,6 +50,7 @@ export function MissedNews({ articles, interactions }: {
                         <Link
                             key={a.id}
                             href={`/article/${a.id}`}
+                            onClick={() => noteOpenSurface(a.id, 'missed_news')}
                             className="group flex items-center gap-3 py-2 hover:bg-secondary/50 -mx-2 px-2 rounded-md transition-colors"
                         >
                             <div className="flex-1 min-w-0">
@@ -70,5 +74,6 @@ export function MissedNews({ articles, interactions }: {
                 })}
             </div>
         </div>
+        </ImpressionProbe>
     )
 }

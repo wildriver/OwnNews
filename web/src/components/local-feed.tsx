@@ -6,7 +6,7 @@
 // 推薦に使うデータ（ベクトル・強度・カテゴリON/OFF・操作履歴）は運営Supabaseに
 // ユーザー単位で保存し端末間同期。IndexedDBは高速表示用キャッシュ。
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { BubbleFeedLayout } from '@/components/bubble-feed-layout'
 import { TopicFeed } from '@/components/topic-feed'
@@ -23,6 +23,8 @@ import { rankFeed, filterArticles, searchArticles, seedVectorFromCategories } fr
 import { WatchTagChip } from '@/components/watch-tag-chip'
 import { getKV, setKV, getAllInteractions } from '@/lib/client/store'
 import { pullUserData, pushVector, pushSettings } from '@/lib/client/sync'
+import { makeFilterChangeLogger } from '@/lib/client/events'
+import { ImpressionProbe } from '@/components/impression-probe'
 import { INTERACTION_EVENT } from '@/lib/client/interactions'
 import { bumpUsageEvent } from '@/lib/client/usage'
 
@@ -134,11 +136,17 @@ export function LocalFeed() {
     }
 
     // ---- スライダー: 端末側で即時再計算し、設定を運営Supabaseへ同期 ----
+    // 現在値の上書きだけでは「いつ・どちらへ動かしたか」が残らないため、
+    // 確定値を ux_events に1件記録する（観察研究の主要評価指標）。
+    const logFilterChange = useRef(makeFilterChangeLogger()).current
+    const strengthRef = useRef(strength)
+    useEffect(() => { strengthRef.current = strength }, [strength])
     const handleStrengthChange = useCallback((v: number) => {
+        logFilterChange(strengthRef.current, v)
         setStrength(v)
         setKV('filter_strength', v)
         pushSettings({ filterStrength: v })
-    }, [])
+    }, [logFilterChange])
 
     // ---- ジャンルON/OFF: 端末間同期のため運営Supabaseへも保存 ----
     const handleExcludeChange = useCallback((next: Set<string>) => {
@@ -221,7 +229,9 @@ export function LocalFeed() {
                 <div className="flex items-center gap-2">
                     <TextSizeControl className="hidden md:inline-flex" />
                     {!isFilterMode && canRank && view === 'mix' && (
-                        <LocalFilterSlider value={strength} onChange={handleStrengthChange} />
+                        <ImpressionProbe surface="slider">
+                            <LocalFilterSlider value={strength} onChange={handleStrengthChange} />
+                        </ImpressionProbe>
                     )}
                 </div>
             </header>

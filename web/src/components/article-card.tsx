@@ -10,6 +10,7 @@ import { recordInteraction } from '@/lib/client/interactions'
 import { InteractionType } from '@/lib/client/types'
 import { extractSourceName, stripHtml } from '@/lib/news'
 import { REACTION_EMOJI } from '@/lib/client/reactions'
+import { noteOpenSurface, Surface } from '@/lib/client/events'
 
 interface ArticleCardProps {
     article: GroupedArticle
@@ -17,6 +18,8 @@ interface ArticleCardProps {
     onCategoryClick?: (category: string) => void
     /** row = 高密度リスト行（既定） / featured = セクション先頭の大型カード */
     variant?: 'row' | 'featured'
+    /** この記事を出している面。閲覧記録に添えて「バブルの外を読んだか」を判別する */
+    surface?: Surface
 }
 
 // 栄養素のうち特徴的なもの（60以上）を最大2つ、控えめなテキストラベルで示す
@@ -49,7 +52,9 @@ function formatDate(published?: string, collectedAt?: string): string {
 /** スワイプ判定: この距離(px)を超えて左に払うと「興味なし」 */
 const SWIPE_DISMISS_THRESHOLD = 90
 
-export function ArticleCard({ article, outsideBubble, onCategoryClick, variant = 'row' }: ArticleCardProps) {
+export function ArticleCard({ article, outsideBubble, onCategoryClick, variant = 'row', surface }: ArticleCardProps) {
+    // 面が明示されなければバブル内/外から決める（既存の呼び出しをそのまま活かす）
+    const openSurface: Surface = surface ?? (outsideBubble ? 'outside_bubble' : 'in_bubble')
     const [expanded, setExpanded] = useState(false)
     const [imageError, setImageError] = useState(false)
     // 左スワイプで興味なし（モバイル）
@@ -263,7 +268,7 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
         return swipeShell(
             <>
                 {dismissButton}
-                <Link href={`/article/${article.id}`} onClick={() => logInteraction('view')} className="block">
+                <Link href={`/article/${article.id}`} onClick={() => { noteOpenSurface(article.id, openSurface); logInteraction('view') }} className="block">
                     {hasImage && (
                         <div className="relative w-full aspect-[2/1] overflow-hidden bg-muted">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -297,7 +302,7 @@ export function ArticleCard({ article, outsideBubble, onCategoryClick, variant =
             {dismissButton}
             <Link
                 href={`/article/${article.id}`}
-                onClick={() => logInteraction('view')}
+                onClick={() => { noteOpenSurface(article.id, openSurface); logInteraction('view') }}
                 className="flex gap-3 px-3 py-2.5"
             >
                 <div className="flex-1 min-w-0 flex flex-col gap-1">

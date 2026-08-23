@@ -39,6 +39,7 @@ import { getAllInteractions } from '@/lib/client/store'
 import { loadArticles } from '@/lib/client/pack'
 import { LocalInteraction, PackArticle } from '@/lib/client/types'
 import { SYNCED_EVENT } from '@/lib/client/sync'
+import { logImpression } from '@/lib/client/events'
 import { Loader2 } from 'lucide-react'
 
 export default function DashboardPage() {
@@ -46,6 +47,9 @@ export default function DashboardPage() {
     const [period, setPeriod] = useState<Period>('30d')
     const [interactions, setInteractions] = useState<LocalInteraction[] | null>(null)
     const [articles, setArticles] = useState<PackArticle[]>([])
+
+    // 情報的健康ダッシュボードを開いたこと自体を記録（率の分母）
+    useEffect(() => { logImpression('dashboard') }, [])
 
     useEffect(() => {
         let cancelled = false

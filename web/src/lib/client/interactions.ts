@@ -9,6 +9,7 @@
 import { putInteraction, getAllInteractions, deleteInteractions, getKV, setKV, getAllArticles } from './store'
 import { updateVector, updateVectorWeighted, engagementAlpha } from './engine'
 import { pushInteraction, pushVector, deleteRemoteInteraction } from './sync'
+import { takeOpenSurface } from './events'
 import { InteractionType, LocalInteraction } from './types'
 
 export const INTERACTION_EVENT = 'ownnews:interaction'
@@ -42,6 +43,8 @@ export async function recordInteraction(articleId: string, type: InteractionType
             perspective_score: article?.perspective_score,
             emotion_score: article?.emotion_score,
             immediacy_score: article?.immediacy_score,
+            // 閲覧のみ、直前のクリックで控えた面を添える（無ければ direct）
+            source_surface: type === 'view' ? takeOpenSurface(articleId) : undefined,
             synced: false,
         }
         await putInteraction(interaction)
@@ -122,6 +125,7 @@ export async function recordDwell(articleId: string, dwellSec: number, scrollDep
             immediacy_score: prev?.immediacy_score ?? article?.immediacy_score,
             dwell_seconds: mergedDwell,
             scroll_depth: Math.round(mergedScroll * 100) / 100,
+            source_surface: prev?.source_surface,   // view時に記録した面を消さない
             synced: false,
         }
         await putInteraction(row)

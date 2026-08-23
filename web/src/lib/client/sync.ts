@@ -94,7 +94,7 @@ async function doPull(): Promise<RemoteState | null> {
 
         const INT_BASE_COLS = 'article_id, interaction_type, created_at, category, category_medium, title, link, dwell_seconds, scroll_depth'
         // 栄養素スコア＋キーワード（20260713150000で追加）。移行前は列が無いのでフォールバックする
-        const INT_SNAPSHOT_COLS = 'fact_score, context_score, perspective_score, emotion_score, immediacy_score, category_minor'
+        const INT_SNAPSHOT_COLS = 'fact_score, context_score, perspective_score, emotion_score, immediacy_score, category_minor, source_surface'
 
         const [{ data: profile }, { data: vecRow }, remoteInts] = await Promise.all([
             supabase.from('user_profile').select('filter_strength, excluded_categories, watched_tags, updated_at').eq('user_id', email).maybeSingle(),
@@ -177,6 +177,8 @@ async function doPull(): Promise<RemoteState | null> {
                     link: r.link || undefined,
                     dwell_seconds: r.dwell_seconds || undefined,
                     scroll_depth: r.scroll_depth || undefined,
+                    // 移行前のスキーマでは列が無い（フォールバック取得）ため型は緩めに扱う
+                    source_surface: (r as { source_surface?: string }).source_surface || prev?.source_surface || undefined,
                     fact_score: pickScore(r, art, prev, 'fact_score'),
                     context_score: pickScore(r, art, prev, 'context_score'),
                     perspective_score: pickScore(r, art, prev, 'perspective_score'),
@@ -261,6 +263,7 @@ function snapshotCols(i: LocalInteraction): Record<string, unknown> {
     if (i.emotion_score != null) cols.emotion_score = i.emotion_score
     if (i.immediacy_score != null) cols.immediacy_score = i.immediacy_score
     if (Array.isArray(i.category_minor) && i.category_minor.length > 0) cols.category_minor = i.category_minor
+    if (i.source_surface) cols.source_surface = i.source_surface
     return cols
 }
 

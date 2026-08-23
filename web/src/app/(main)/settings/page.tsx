@@ -6,7 +6,7 @@
 //  3. 関心プロファイル（学習状態・エクスポート/インポート/リセット）
 //  4. 記事データの同期（記事キャッシュ状態・手動同期）
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,6 +20,7 @@ import { LocalInteraction } from '@/lib/client/types'
 import { getUserEmail, pushSettings, pushVector, deleteRemoteVector, SYNCED_EVENT } from '@/lib/client/sync'
 import { getSubscriptionState, subscribePush, unsubscribePush } from '@/lib/client/push'
 import { LocalFilterSlider } from '@/components/local-filter-slider'
+import { makeFilterChangeLogger } from '@/lib/client/events'
 import { RSS_CATEGORIES, loadExcluded, saveExcluded } from '@/components/category-filter-bar'
 
 export default function SettingsPage() {
@@ -27,6 +28,7 @@ export default function SettingsPage() {
     const [interactionCount, setInteractionCount] = useState(0)
     const [hasVector, setHasVector] = useState(false)
     const [strength, setStrength] = useState(0.5)
+    const logFilterChange = useRef(makeFilterChangeLogger()).current
     const [excluded, setExcluded] = useState<Set<string>>(new Set())
     const [articleCount, setArticleCount] = useState(0)
     const [lastSync, setLastSync] = useState<string>('')
@@ -80,6 +82,7 @@ export default function SettingsPage() {
 
     // ---- フィード調整（運営Supabaseへ同期） ----
     const handleStrengthChange = async (v: number) => {
+        logFilterChange(strength, v)   // 変動の記録（設定画面からの操作も同じ扱い）
         setStrength(v)
         await setKV('filter_strength', v)
         pushSettings({ filterStrength: v }).then(ok => {

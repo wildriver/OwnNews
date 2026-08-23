@@ -47,6 +47,9 @@ export interface LocalInteraction {
     /** 閲覧時間（秒）と最大スクロール到達度(0-1)。興味の強さ推定に使う */
     dwell_seconds?: number
     scroll_depth?: number
+    /** どの面から開いたか（in_bubble / outside_bubble / missed_news / topic / search / direct）。
+     *  「バブルの外を実際に読んだか」の判別に使う。推薦計算には使わない。 */
+    source_surface?: string
     /** 運営Supabaseへ同期済みか */
     synced?: boolean
 }

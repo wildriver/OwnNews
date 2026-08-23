@@ -19,6 +19,8 @@ ORDER BY 1;
   記事はretentionで日次削除されるため、articles へのFKは今後も作らないこと。
   再発は `admin_cascade_guard()`（Worker毎実行＋管理画面バナー）が自動検知する。
 - `user_profile` 宛てのCASCADEは意図的な設計（退会時に本人データを削除するため）。
+- `ux_events`（20260823120000で追加）は**FKを一切持たない**。研究データなので連鎖削除の
+  経路を作らない方針。退会時の削除は必要になった時点で明示的に行う。
 
 ## 制約一覧
 
@@ -43,6 +45,7 @@ ORDER BY 1;
 | user_interactions | user_interactions_pkey | PRIMARY KEY (user_id, article_id, interaction_type) |
 | user_interactions | user_interactions_user_id_fkey | FOREIGN KEY (user_id) REFERENCES user_profile(user_id) ON DELETE CASCADE |
 | user_profile | user_profile_pkey | PRIMARY KEY (user_id) |
+| ux_events | ux_events_pkey | PRIMARY KEY (id) |
 | user_vectors | user_vectors_pkey | PRIMARY KEY (user_id) |
 | watched_tag_events | watched_tag_events_action_check | CHECK (action = ANY ('watch','unwatch')) |
 | watched_tag_events | watched_tag_events_pkey | PRIMARY KEY (id) |
