@@ -138,7 +138,7 @@ export function LocalFeed() {
     // ---- スライダー: 端末側で即時再計算し、設定を運営Supabaseへ同期 ----
     // 現在値の上書きだけでは「いつ・どちらへ動かしたか」が残らないため、
     // 確定値を ux_events に1件記録する（観察研究の主要評価指標）。
-    const logFilterChange = useRef(makeFilterChangeLogger()).current
+    const logFilterChange = useRef(makeFilterChangeLogger('feed')).current
     const strengthRef = useRef(strength)
     useEffect(() => { strengthRef.current = strength }, [strength])
     const handleStrengthChange = useCallback((v: number) => {

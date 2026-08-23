@@ -28,7 +28,7 @@ export default function SettingsPage() {
     const [interactionCount, setInteractionCount] = useState(0)
     const [hasVector, setHasVector] = useState(false)
     const [strength, setStrength] = useState(0.5)
-    const logFilterChange = useRef(makeFilterChangeLogger()).current
+    const logFilterChange = useRef(makeFilterChangeLogger('settings')).current
     const [excluded, setExcluded] = useState<Set<string>>(new Set())
     const [articleCount, setArticleCount] = useState(0)
     const [lastSync, setLastSync] = useState<string>('')

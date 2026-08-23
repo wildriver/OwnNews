@@ -36,10 +36,18 @@ function send(e: UxEvent): void {
     }).catch(() => { /* 計測失敗で本体を止めない */ })
 }
 
+/** スライダーを操作した場所。読んでいる最中の文脈内探索(feed)と、
+ *  腰を据えた設定変更(settings)は別の行動なので区別して記録する。 */
+export type FilterPlace = 'feed' | 'settings'
+
 /** スライダーの確定値を1件記録する。方向（広げた/狭めた）が復元できるよう from も残す。 */
-export function logFilterChange(from: number, to: number): void {
+export function logFilterChange(from: number, to: number, place: FilterPlace): void {
     if (from === to) return
-    send({ event_type: 'filter_change', surface: 'slider', value_from: from, value_to: to, client_at: new Date().toISOString() })
+    send({
+        event_type: 'filter_change', surface: 'slider',
+        value_from: from, value_to: to, meta: { place },
+        client_at: new Date().toISOString(),
+    })
 }
 
 /**
@@ -84,14 +92,14 @@ export function takeOpenSurface(articleId: string): Surface {
 }
 
 /** rAF連続発火のスライダー向け。離してから確定した値だけを1件にまとめる。 */
-export function makeFilterChangeLogger(settleMs = 400) {
+export function makeFilterChangeLogger(place: FilterPlace, settleMs = 400) {
     let base: number | null = null
     let timer: ReturnType<typeof setTimeout> | null = null
     return (from: number, to: number) => {
         if (base === null) base = from      // ドラッグ開始時の値を掴んでおく
         if (timer) clearTimeout(timer)
         timer = setTimeout(() => {
-            if (base !== null) logFilterChange(base, to)
+            if (base !== null) logFilterChange(base, to, place)
             base = null
             timer = null
         }, settleMs)
