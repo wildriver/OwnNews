@@ -2,20 +2,23 @@
 
 import { PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-
-// RSS categories from ceek.jp — fixed 8 axes for consistent radar shape
-const RSS_CATEGORIES = ['IT', 'スポーツ', 'エンターテイメント', '地方・地域', '訃報・人事', 'サイエンス', '中国・韓国', 'その他']
+import { ONBOARDING_CATEGORIES } from '@/lib/types'
 
 interface HealthRadarInfoProps {
     distribution: Record<string, number>
     label?: string
 }
 
+// 軸は多様性スコアの分母（ONBOARDING_CATEGORIES=12ジャンル）と同一にする。
+// 以前は8軸に固定しており、政治・経済・国際・社会がレーダーに出ていなかった。
+// これらは多様性スコアの分母には入っているため、「読んでいないと減点されるのに
+// 鏡には映らない」状態になっていた。情報的健康の文脈では最も見えるべき4ジャンルであり、
+// スコアと可視化は同じ空間を指していなければならない。
+// 定数を共有することで、以降ジャンルを増減しても両者がずれない。
 export function HealthRadarInfo({ distribution, label }: HealthRadarInfoProps) {
-    const maxVal = Math.max(...RSS_CATEGORIES.map(c => distribution[c] || 0), 1)
+    const maxVal = Math.max(...ONBOARDING_CATEGORIES.map(c => distribution[c] || 0), 1)
 
-    // Always use the fixed 8 RSS categories so the radar shape is consistent
-    const data = RSS_CATEGORIES.map(subject => ({
+    const data = ONBOARDING_CATEGORIES.map(subject => ({
         subject,
         A: distribution[subject] || 0,
         fullMark: maxVal,
@@ -27,11 +30,13 @@ export function HealthRadarInfo({ distribution, label }: HealthRadarInfoProps) {
                 <CardTitle className="text-lg font-bold text-foreground">ジャンルバランス</CardTitle>
                 <CardDescription>{label || 'カテゴリー摂取バランス'}</CardDescription>
             </CardHeader>
-            <CardContent className="h-[300px]">
+            {/* 8軸から12軸に増えたぶん、ラベルの重なりを避けて高さと余白を広げ、
+                文字を少し小さくする（「エンターテイメント」が最長） */}
+            <CardContent className="h-[340px]">
                 <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data}>
+                    <RadarChart cx="50%" cy="50%" outerRadius="72%" data={data}>
                         <PolarGrid stroke="#E5E7E3" />
-                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#6E7672', fontSize: 12 }} />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#6E7672', fontSize: 10 }} />
                         <Radar
                             name="My Feed"
                             dataKey="A"
